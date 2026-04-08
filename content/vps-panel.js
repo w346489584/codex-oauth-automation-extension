@@ -76,6 +76,34 @@ function getActionText(el) {
     .trim();
 }
 
+function getStatusBadgeElement() {
+  const candidates = document.querySelectorAll('.status-badge');
+  return Array.from(candidates).find(isVisibleElement) || null;
+}
+
+function getStatusBadgeText() {
+  const statusEl = getStatusBadgeElement();
+  return statusEl ? (statusEl.textContent || '').replace(/\s+/g, ' ').trim() : '';
+}
+
+async function waitForExactSuccessBadge(timeout = 30000) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeout) {
+    throwIfStopped();
+    const statusText = getStatusBadgeText();
+    if (statusText === '认证成功！') {
+      return statusText;
+    }
+    await sleep(200);
+  }
+
+  const finalText = getStatusBadgeText();
+  throw new Error(finalText
+    ? `VPS 面板状态不是“认证成功！”，当前为“${finalText}”。`
+    : 'VPS 面板长时间未出现“认证成功！”状态徽标。');
+}
+
 function findManagementKeyInput() {
   const candidates = document.querySelectorAll(
     '.LoginPage-module__loginCard___OgP-R input[type="password"], input[placeholder*="管理密钥"], input[aria-label*="管理密钥"]'
@@ -300,20 +328,7 @@ async function step9_vpsVerify(payload) {
   simulateClick(submitBtn);
   log('步骤 9：已点击“提交回调 URL”，正在等待认证结果...');
 
-  // Wait for "认证成功！" status badge to appear
-  try {
-    await waitForElementByText('.status-badge, [class*="status"]', /认证成功/, 30000);
-    log('步骤 9：认证成功！', 'ok');
-  } catch {
-    // Check if there's an error message instead
-    const statusEl = document.querySelector('.status-badge, [class*="status"]');
-    const statusText = statusEl ? statusEl.textContent : 'unknown';
-    if (/成功|success/i.test(statusText)) {
-      log('步骤 9：认证成功！', 'ok');
-    } else {
-      log(`步骤 9：提交后的状态为“${statusText}”，可能仍在处理中。`, 'warn');
-    }
-  }
-
-  reportComplete(9);
+  const verifiedStatus = await waitForExactSuccessBadge();
+  log(`步骤 9：${verifiedStatus}`, 'ok');
+  reportComplete(9, { localhostUrl, verifiedStatus });
 }

@@ -222,6 +222,18 @@ function isSignupPageHost(hostname = '') {
   return ['auth0.openai.com', 'auth.openai.com', 'accounts.openai.com'].includes(hostname);
 }
 
+function buildLocalhostCleanupPrefix(rawUrl) {
+  const parsed = parseUrlSafely(rawUrl);
+  if (!parsed || parsed.hostname !== 'localhost') return '';
+
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  if (!segments.length) {
+    return parsed.origin;
+  }
+
+  return `${parsed.origin}/${segments[0]}`;
+}
+
 function matchesSourceUrlFamily(source, candidateUrl, referenceUrl) {
   const candidate = parseUrlSafely(candidateUrl);
   if (!candidate) return false;
@@ -282,6 +294,24 @@ async function closeConflictingTabsForSource(source, currentUrl, options = {}) {
   }
 
   await addLog(`已关闭 ${matchedIds.length} 个旧的${getSourceLabel(source)}标签页。`, 'info');
+}
+
+async function closeTabsByUrlPrefix(prefix, options = {}) {
+  if (!prefix) return 0;
+
+  const { excludeTabIds = [] } = options;
+  const excluded = new Set(excludeTabIds.filter(id => Number.isInteger(id)));
+  const tabs = await chrome.tabs.query({});
+  const matchedIds = tabs
+    .filter((tab) => Number.isInteger(tab.id) && !excluded.has(tab.id))
+    .filter((tab) => typeof tab.url === 'string' && tab.url.startsWith(prefix))
+    .map((tab) => tab.id);
+
+  if (!matchedIds.length) return 0;
+
+  await chrome.tabs.remove(matchedIds).catch(() => {});
+  await addLog(`已关闭 ${matchedIds.length} 个匹配 ${prefix} 的 localhost 残留标签页。`, 'info');
+  return matchedIds.length;
 }
 
 // ============================================================
@@ -897,6 +927,13 @@ async function handleStepData(step, payload) {
         broadcastDataUpdate({ localhostUrl: payload.localhostUrl });
       }
       break;
+    case 9: {
+      const localhostPrefix = buildLocalhostCleanupPrefix(payload.localhostUrl);
+      if (localhostPrefix) {
+        await closeTabsByUrlPrefix(localhostPrefix);
+      }
+      break;
+    }
   }
 }
 
