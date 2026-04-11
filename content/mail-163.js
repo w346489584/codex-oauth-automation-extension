@@ -5,7 +5,7 @@
 // Mail item: div[sign="letter"] with aria-label="你的 ChatGPT 代码为 479637 发件人 ： OpenAI ..."
 // Sender: .nui-user (e.g., "OpenAI")
 // Subject: span.da0 (e.g., "你的 ChatGPT 代码为 479637")
-// Right-click menu: .nui-menu → .nui-menu-item with text "删除邮件"
+// Delete actions: hover trash icon on the row, or checkbox + toolbar delete button
 
 const MAIL163_PREFIX = '[MultiPage:mail-163]';
 const isTopFrame = window === window.top;
@@ -276,7 +276,7 @@ async function handlePollEmail(step, payload) {
 }
 
 // ============================================================
-// Delete Email via Right-Click Menu
+// Delete Email via Hover Trash / Toolbar Fallback
 // ============================================================
 
 async function deleteEmail(item, step) {
