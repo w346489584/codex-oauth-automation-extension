@@ -1,6 +1,6 @@
 // background.js — Service Worker: orchestration, state, tab management, message routing
 
-importScripts('data/names.js', 'hotmail-utils.js', 'content/activation-utils.js');
+importScripts('data/names.js', 'hotmail-utils.js', 'cloudflare-temp-email-utils.js', 'content/activation-utils.js');
 
 const {
   buildHotmailMailApiLatestUrl,
@@ -18,12 +18,25 @@ const {
   shouldClearHotmailCurrentSelection,
 } = self.HotmailUtils;
 const {
+  DEFAULT_MAIL_PAGE_SIZE: CLOUDFLARE_TEMP_EMAIL_DEFAULT_PAGE_SIZE,
+  buildCloudflareTempEmailHeaders,
+  getCloudflareTempEmailAddressFromResponse,
+  joinCloudflareTempEmailUrl,
+  normalizeCloudflareTempEmailAddress,
+  normalizeCloudflareTempEmailBaseUrl,
+  normalizeCloudflareTempEmailDomain,
+  normalizeCloudflareTempEmailDomains,
+  normalizeCloudflareTempEmailMailApiMessages,
+} = self.CloudflareTempEmailUtils;
+const {
   isRecoverableStep9AuthFailure,
 } = self.MultiPageActivationUtils;
 
 const LOG_PREFIX = '[MultiPage:bg]';
 const DUCK_AUTOFILL_URL = 'https://duckduckgo.com/email/settings/autofill';
 const HOTMAIL_PROVIDER = 'hotmail-api';
+const CLOUDFLARE_TEMP_EMAIL_PROVIDER = 'cloudflare-temp-email';
+const CLOUDFLARE_TEMP_EMAIL_GENERATOR = 'cloudflare-temp-email';
 const HOTMAIL_MAILBOXES = ['INBOX', 'Junk'];
 const STOP_ERROR_MESSAGE = '流程已被用户停止。';
 const HUMAN_STEP_DELAY_MIN = 700;
@@ -81,6 +94,11 @@ const PERSISTED_SETTING_DEFAULTS = {
   hotmailLocalBaseUrl: DEFAULT_HOTMAIL_LOCAL_BASE_URL,
   cloudflareDomain: '',
   cloudflareDomains: [],
+  cloudflareTempEmailBaseUrl: '',
+  cloudflareTempEmailAdminAuth: '',
+  cloudflareTempEmailCustomAuth: '',
+  cloudflareTempEmailDomain: '',
+  cloudflareTempEmailDomains: [],
   hotmailAccounts: [],
 };
 
@@ -218,9 +236,8 @@ function normalizeEmailGenerator(value = '') {
   if (normalized === 'custom' || normalized === 'manual') {
     return 'custom';
   }
-  if (normalized === 'cloudflare') {
-    return 'cloudflare';
-  }
+  if (normalized === 'cloudflare') return 'cloudflare';
+  if (normalized === CLOUDFLARE_TEMP_EMAIL_GENERATOR) return CLOUDFLARE_TEMP_EMAIL_GENERATOR;
   return 'duck';
 }
 
@@ -233,6 +250,7 @@ function normalizeMailProvider(value = '') {
   switch (normalized) {
     case 'custom':
     case HOTMAIL_PROVIDER:
+    case CLOUDFLARE_TEMP_EMAIL_PROVIDER:
     case '163':
     case '163-vip':
     case 'qq':
@@ -330,6 +348,16 @@ function getHotmailServiceSettings(state = {}) {
   };
 }
 
+function getCloudflareTempEmailConfig(state = {}) {
+  return {
+    baseUrl: normalizeCloudflareTempEmailBaseUrl(state.cloudflareTempEmailBaseUrl),
+    adminAuth: String(state.cloudflareTempEmailAdminAuth || ''),
+    customAuth: String(state.cloudflareTempEmailCustomAuth || ''),
+    domain: normalizeCloudflareTempEmailDomain(state.cloudflareTempEmailDomain),
+    domains: normalizeCloudflareTempEmailDomains(state.cloudflareTempEmailDomains),
+  };
+}
+
 function normalizePersistentSettingValue(key, value) {
   switch (key) {
     case 'panelMode':
@@ -379,6 +407,15 @@ function normalizePersistentSettingValue(key, value) {
       return normalizeCloudflareDomain(value);
     case 'cloudflareDomains':
       return normalizeCloudflareDomains(value);
+    case 'cloudflareTempEmailBaseUrl':
+      return normalizeCloudflareTempEmailBaseUrl(value);
+    case 'cloudflareTempEmailAdminAuth':
+    case 'cloudflareTempEmailCustomAuth':
+      return String(value || '');
+    case 'cloudflareTempEmailDomain':
+      return normalizeCloudflareTempEmailDomain(value);
+    case 'cloudflareTempEmailDomains':
+      return normalizeCloudflareTempEmailDomains(value);
     case 'hotmailAccounts':
       return normalizeHotmailAccounts(value);
     default:
@@ -421,6 +458,13 @@ function buildPersistentSettingsPayload(input = {}, options = {}) {
       domains.unshift(payload.cloudflareDomain);
     }
     payload.cloudflareDomains = domains;
+  }
+  if (payload.cloudflareTempEmailDomains) {
+    const domains = normalizeCloudflareTempEmailDomains(payload.cloudflareTempEmailDomains);
+    if (payload.cloudflareTempEmailDomain && !domains.includes(payload.cloudflareTempEmailDomain)) {
+      domains.unshift(payload.cloudflareTempEmailDomain);
+    }
+    payload.cloudflareTempEmailDomains = domains;
   }
 
   return payload;
@@ -1302,6 +1346,120 @@ function buildGeneratedAliasEmail(state) {
   throw new Error(`未支持的别名邮箱类型：${provider}`);
 }
 
+function summarizeCloudflareTempEmailMessagesForLog(messages) {
+  return (messages || [])
+    .slice()
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.receivedDateTime || '') || 0;
+      const rightTime = Date.parse(right.receivedDateTime || '') || 0;
+      return rightTime - leftTime;
+    })
+    .slice(0, 3)
+    .map((message) => {
+      const receivedAt = message?.receivedDateTime || '未知时间';
+      const sender = message?.from?.emailAddress?.address || '未知发件人';
+      const subject = message?.subject || '（无主题）';
+      const preview = String(message?.bodyPreview || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+      const address = message?.address || '未知地址';
+      return `[${address}] ${receivedAt} | ${sender} | ${subject} | ${preview}`;
+    })
+    .join(' || ');
+}
+
+async function deleteCloudflareTempEmailMail(config, mailId) {
+  const normalizedMailId = String(mailId || '').trim();
+  if (!normalizedMailId) return false;
+
+  await requestCloudflareTempEmailJson(config, `/admin/mails/${encodeURIComponent(normalizedMailId)}`, {
+    method: 'DELETE',
+  });
+  return true;
+}
+
+async function listCloudflareTempEmailMessages(state, options = {}) {
+  const config = ensureCloudflareTempEmailConfig(state, { requireAdminAuth: true });
+  const address = normalizeCloudflareTempEmailAddress(options.address);
+  const payload = await requestCloudflareTempEmailJson(config, '/admin/mails', {
+    method: 'GET',
+    searchParams: {
+      limit: Number(options.limit) || CLOUDFLARE_TEMP_EMAIL_DEFAULT_PAGE_SIZE,
+      offset: Number(options.offset) || 0,
+      address,
+    },
+  });
+
+  const messages = normalizeCloudflareTempEmailMailApiMessages(payload).filter((message) => {
+    if (!address) return true;
+    return !message.address || normalizeCloudflareTempEmailAddress(message.address) === address;
+  });
+
+  return { config, messages };
+}
+
+async function pollCloudflareTempEmailVerificationCode(step, state, pollPayload = {}) {
+  const targetEmail = normalizeCloudflareTempEmailAddress(pollPayload.targetEmail || state.email);
+  if (!targetEmail) {
+    throw new Error('Cloudflare Temp Email 轮询前缺少目标邮箱地址。');
+  }
+
+  await addLog(`步骤 ${step}：正在轮询 Cloudflare Temp Email 邮件（${targetEmail}）...`, 'info');
+  const maxAttempts = Number(pollPayload.maxAttempts) || 5;
+  const intervalMs = Number(pollPayload.intervalMs) || 3000;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    throwIfStopped();
+    try {
+      const { config, messages } = await listCloudflareTempEmailMessages(state, {
+        address: targetEmail,
+        limit: pollPayload.limit || CLOUDFLARE_TEMP_EMAIL_DEFAULT_PAGE_SIZE,
+        offset: pollPayload.offset || 0,
+      });
+      const matchResult = pickVerificationMessageWithTimeFallback(messages, {
+        afterTimestamp: pollPayload.filterAfterTimestamp || 0,
+        senderFilters: pollPayload.senderFilters || [],
+        subjectFilters: pollPayload.subjectFilters || [],
+        excludeCodes: pollPayload.excludeCodes || [],
+      });
+      const match = matchResult.match;
+
+      if (match?.code) {
+        if (matchResult.usedRelaxedFilters) {
+          const fallbackLabel = matchResult.usedTimeFallback ? '宽松匹配 + 时间回退' : '宽松匹配';
+          await addLog(`步骤 ${step}：严格规则未命中，已改用 ${fallbackLabel} 并命中 Cloudflare Temp Email 验证码。`, 'warn');
+        }
+        try {
+          await deleteCloudflareTempEmailMail(config, match.message?.id);
+        } catch (err) {
+          await addLog(`步骤 ${step}：删除 Cloudflare Temp Email 邮件失败：${err.message}`, 'warn');
+        }
+        return {
+          ok: true,
+          code: match.code,
+          emailTimestamp: match.receivedAt || Date.now(),
+          mailId: match.message?.id || '',
+        };
+      }
+
+      lastError = new Error(`步骤 ${step}：暂未在 Cloudflare Temp Email 中找到匹配验证码（${attempt}/${maxAttempts}）。`);
+      await addLog(lastError.message, attempt === maxAttempts ? 'warn' : 'info');
+      const sample = summarizeCloudflareTempEmailMessagesForLog(messages);
+      if (sample) {
+        await addLog(`步骤 ${step}：最近邮件样本：${sample}`, 'info');
+      }
+    } catch (err) {
+      lastError = err;
+      await addLog(`步骤 ${step}：Cloudflare Temp Email 轮询失败：${err.message}`, 'warn');
+    }
+
+    if (attempt < maxAttempts) {
+      await sleepWithStop(intervalMs);
+    }
+  }
+
+  throw lastError || new Error(`步骤 ${step}：未在 Cloudflare Temp Email 中找到新的匹配验证码。`);
+}
+
 // ============================================================
 // Tab Registry
 // ============================================================
@@ -1532,11 +1690,14 @@ function buildLocalhostCleanupPrefix(rawUrl) {
 async function closeTabsByUrlPrefix(prefix, options = {}) {
   if (!prefix) return 0;
 
-  const { excludeTabIds = [] } = options;
+  const { excludeTabIds = [], excludeUrls = [], excludeLocalhostCallbacks = false } = options;
   const excluded = new Set(excludeTabIds.filter(id => Number.isInteger(id)));
+  const excludedUrls = new Set((Array.isArray(excludeUrls) ? excludeUrls : []).filter(Boolean));
   const tabs = await chrome.tabs.query({});
   const matchedIds = tabs
     .filter((tab) => Number.isInteger(tab.id) && !excluded.has(tab.id))
+    .filter((tab) => typeof tab.url === 'string' && !excludedUrls.has(tab.url))
+    .filter((tab) => !(excludeLocalhostCallbacks && isLocalhostOAuthCallbackUrl(tab.url)))
     .filter((tab) => typeof tab.url === 'string' && tab.url.startsWith(prefix))
     .map((tab) => tab.id);
 
@@ -2124,6 +2285,7 @@ function getSourceLabel(source) {
     'inbucket-mail': 'Inbucket 邮箱',
     'duck-mail': 'Duck 邮箱',
     'hotmail-api': 'Hotmail（远程/本地）',
+    'cloudflare-temp-email': 'Cloudflare Temp Email',
   };
   return labels[source] || source || '未知来源';
 }
@@ -3141,7 +3303,10 @@ async function handleStepData(step, payload) {
       }
       const localhostPrefix = buildLocalhostCleanupPrefix(payload.localhostUrl);
       if (localhostPrefix) {
-        await closeTabsByUrlPrefix(localhostPrefix);
+        await closeTabsByUrlPrefix(localhostPrefix, {
+          excludeUrls: [payload.localhostUrl],
+          excludeLocalhostCallbacks: true,
+        });
       }
       if (shouldUseCustomRegistrationEmail(latestState) && latestState.email) {
         await setEmailStateSilently(null);
@@ -3434,7 +3599,9 @@ function getEmailGeneratorLabel(generator) {
   if (generator === 'custom') {
     return '自定义邮箱';
   }
-  return generator === 'cloudflare' ? 'Cloudflare 邮箱' : 'Duck 邮箱';
+  if (generator === 'cloudflare') return 'Cloudflare 邮箱';
+  if (generator === CLOUDFLARE_TEMP_EMAIL_GENERATOR) return 'Cloudflare Temp Email';
+  return 'Duck 邮箱';
 }
 
 function generateCloudflareAliasLocalPart() {
@@ -3474,6 +3641,107 @@ async function fetchCloudflareEmail(state, options = {}) {
   return aliasEmail;
 }
 
+function ensureCloudflareTempEmailConfig(state, options = {}) {
+  const {
+    requireAdminAuth = false,
+    requireDomain = false,
+  } = options;
+  const config = getCloudflareTempEmailConfig(state);
+  if (!config.baseUrl) {
+    throw new Error('Cloudflare Temp Email 服务地址为空或格式无效。');
+  }
+  if (requireAdminAuth && !config.adminAuth) {
+    throw new Error('Cloudflare Temp Email 缺少 Admin Auth。');
+  }
+  if (requireDomain && !config.domain) {
+    throw new Error('Cloudflare Temp Email 域名为空或格式无效。');
+  }
+  return config;
+}
+
+async function requestCloudflareTempEmailJson(config, path, options = {}) {
+  const {
+    method = 'GET',
+    payload,
+    searchParams,
+    timeoutMs = 20000,
+  } = options;
+
+  const url = new URL(joinCloudflareTempEmailUrl(config.baseUrl, path));
+  if (searchParams && typeof searchParams === 'object') {
+    for (const [key, value] of Object.entries(searchParams)) {
+      if (value === undefined || value === null || value === '') continue;
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs);
+
+  let response;
+  try {
+    response = await fetch(url.toString(), {
+      method,
+      headers: buildCloudflareTempEmailHeaders(config, {
+        json: payload !== undefined,
+      }),
+      body: payload !== undefined ? JSON.stringify(payload) : undefined,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    const errorMessage = err?.name === 'AbortError'
+      ? `Cloudflare Temp Email 请求超时（>${Math.round(timeoutMs / 1000)} 秒）`
+      : `Cloudflare Temp Email 请求失败：${err.message}`;
+    throw new Error(errorMessage);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    parsed = text;
+  }
+
+  if (!response.ok) {
+    const payloadError = typeof parsed === 'object' && parsed
+      ? (parsed.message || parsed.error || parsed.msg)
+      : '';
+    throw new Error(`Cloudflare Temp Email 请求失败：${payloadError || text || `HTTP ${response.status}`}`);
+  }
+
+  return parsed;
+}
+
+async function fetchCloudflareTempEmailAddress(state, options = {}) {
+  throwIfStopped();
+  const latestState = state || await getState();
+  const config = ensureCloudflareTempEmailConfig(latestState, {
+    requireAdminAuth: true,
+    requireDomain: true,
+  });
+  const requestedName = String(options.localPart || options.name || '').trim().toLowerCase() || generateCloudflareAliasLocalPart();
+  const payload = {
+    enablePrefix: true,
+    name: requestedName,
+    domain: config.domain,
+  };
+  const result = await requestCloudflareTempEmailJson(config, '/admin/new_address', {
+    method: 'POST',
+    payload,
+  });
+  const address = normalizeCloudflareTempEmailAddress(getCloudflareTempEmailAddressFromResponse(result));
+  if (!address) {
+    throw new Error('Cloudflare Temp Email 未返回可用邮箱地址。');
+  }
+
+  await setEmailState(address);
+  await addLog(`Cloudflare Temp Email：已生成 ${address}`, 'ok');
+  return address;
+}
+
 async function fetchDuckEmail(options = {}) {
   throwIfStopped();
   const { generateNew = true } = options;
@@ -3507,6 +3775,9 @@ async function fetchGeneratedEmail(state, options = {}) {
   }
   if (generator === 'cloudflare') {
     return fetchCloudflareEmail(currentState, options);
+  }
+  if (generator === CLOUDFLARE_TEMP_EMAIL_GENERATOR) {
+    return fetchCloudflareTempEmailAddress(currentState, options);
   }
   return fetchDuckEmail(options);
 }
@@ -3610,7 +3881,10 @@ async function ensureAutoEmailReady(targetRun, totalRuns, attemptRuns) {
     } catch (err) {
       lastError = err;
       await addLog(`${generatorLabel}自动获取失败（${attempt}/${EMAIL_FETCH_MAX_ATTEMPTS}）：${err.message}`, 'warn');
-      if (generator === 'cloudflare' && /域名/.test(String(err.message || ''))) {
+      if (
+        (generator === 'cloudflare' && /域名/.test(String(err.message || '')))
+        || (generator === CLOUDFLARE_TEMP_EMAIL_GENERATOR && /(服务地址|Admin Auth|域名)/.test(String(err.message || '')))
+      ) {
         break;
       }
     }
@@ -4732,6 +5006,9 @@ function getMailConfig(state) {
   if (provider === HOTMAIL_PROVIDER) {
     return { provider: HOTMAIL_PROVIDER, label: 'Hotmail（远程/本地）' };
   }
+  if (provider === CLOUDFLARE_TEMP_EMAIL_PROVIDER) {
+    return { provider: CLOUDFLARE_TEMP_EMAIL_PROVIDER, label: 'Cloudflare Temp Email' };
+  }
   if (provider === '163') {
     return { source: 'mail-163', url: 'https://mail.163.com/js6/main.jsp?df=mail163_letter#module=mbox.ListModule%7C%7B%22fid%22%3A1%2C%22order%22%3A%22date%22%2C%22desc%22%3Atrue%7D', label: '163 邮箱' };
   }
@@ -4893,6 +5170,12 @@ async function pollFreshVerificationCode(step, state, mail, pollOverrides = {}) 
     return pollHotmailVerificationCode(step, state, {
       ...getVerificationPollPayload(step, state),
       ...hotmailPollConfig,
+      ...pollOverrides,
+    });
+  }
+  if (mail.provider === CLOUDFLARE_TEMP_EMAIL_PROVIDER) {
+    return pollCloudflareTempEmailVerificationCode(step, state, {
+      ...getVerificationPollPayload(step, state),
       ...pollOverrides,
     });
   }
@@ -5111,7 +5394,7 @@ async function executeStep4(state) {
   }
 
   throwIfStopped();
-  if (mail.provider === HOTMAIL_PROVIDER) {
+  if (mail.provider === HOTMAIL_PROVIDER || mail.provider === CLOUDFLARE_TEMP_EMAIL_PROVIDER) {
     await addLog(`步骤 4：正在通过 ${mail.label} 轮询验证码...`);
   } else {
     await addLog(`步骤 4：正在打开${mail.label}...`);
@@ -5246,7 +5529,7 @@ async function runStep7Attempt(state) {
   }
 
   throwIfStopped();
-  if (mail.provider === HOTMAIL_PROVIDER) {
+  if (mail.provider === HOTMAIL_PROVIDER || mail.provider === CLOUDFLARE_TEMP_EMAIL_PROVIDER) {
     await addLog(`步骤 7：正在通过 ${mail.label} 轮询验证码...`);
   } else {
     await addLog(`步骤 7：正在打开${mail.label}...`);
