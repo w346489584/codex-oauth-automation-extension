@@ -8,7 +8,7 @@
       completeStepFromBackground,
       ensureContentScriptReadyOnTab,
       ensureSignupEntryPageReady,
-      ensureSignupPasswordPageReadyInTab,
+      ensureSignupPostEmailPageReadyInTab,
       getTabId,
       isTabAlive,
       resolveSignupEmailForFlow,
@@ -50,13 +50,19 @@
       }
 
       if (!step2Result?.alreadyOnPasswordPage) {
-        await addLog(`步骤 2：邮箱 ${resolvedEmail} 已提交，正在等待进入密码页...`);
+        await addLog(`步骤 2：邮箱 ${resolvedEmail} 已提交，正在等待页面加载并确认下一步入口...`);
       }
 
-      await ensureSignupPasswordPageReadyInTab(signupTabId, 2, {
+      const landingResult = await ensureSignupPostEmailPageReadyInTab(signupTabId, 2, {
         skipUrlWait: Boolean(step2Result?.alreadyOnPasswordPage),
       });
-      await completeStepFromBackground(2, {});
+
+      await completeStepFromBackground(2, {
+        email: resolvedEmail,
+        nextSignupState: landingResult?.state || 'password_page',
+        nextSignupUrl: landingResult?.url || step2Result?.url || '',
+        skippedPasswordStep: landingResult?.state === 'verification_page',
+      });
     }
 
     return { executeStep2 };

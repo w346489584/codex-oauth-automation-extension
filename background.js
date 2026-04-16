@@ -3274,6 +3274,16 @@ function isSignupPasswordPageUrl(rawUrl) {
     && /\/create-account\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
 }
 
+function isSignupEmailVerificationPageUrl(rawUrl) {
+  if (typeof navigationUtils !== 'undefined' && navigationUtils?.isSignupEmailVerificationPageUrl) {
+    return navigationUtils.isSignupEmailVerificationPageUrl(rawUrl);
+  }
+  const parsed = parseUrlSafely(rawUrl);
+  if (!parsed) return false;
+  return isSignupPageHost(parsed.hostname)
+    && /\/email-verification(?:[/?#]|$)/i.test(parsed.pathname || '');
+}
+
 function is163MailHost(hostname = '') {
   if (typeof navigationUtils !== 'undefined' && navigationUtils?.is163MailHost) {
     return navigationUtils.is163MailHost(hostname);
@@ -4306,6 +4316,17 @@ async function handleStepData(step, payload) {
       }
       break;
     }
+    case 2:
+      if (payload.email) await setEmailState(payload.email);
+      if (payload.skippedPasswordStep) {
+        const latestState = await getState();
+        const step3Status = latestState.stepStatuses?.[3];
+        if (step3Status !== 'running' && step3Status !== 'completed' && step3Status !== 'manual_completed') {
+          await setStepStatus(3, 'skipped');
+          await addLog('步骤 2：提交邮箱后页面直接进入邮箱验证码页，已自动跳过步骤 3。', 'warn');
+        }
+      }
+      break;
     case 3:
       if (payload.email) await setEmailState(payload.email);
       if (payload.signupVerificationRequestedAt) {
@@ -4994,13 +5015,19 @@ async function runAutoSequenceFromStep(startStep, context = {}) {
   }
 
   if (startStep <= 3) {
+    const latestState = await getState();
+    const step3Status = latestState.stepStatuses?.[3] || 'pending';
     await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：阶段 2，填写密码、验证、登录并完成授权（第 ${attemptRuns} 次尝试）===`, 'info');
     await broadcastAutoRunStatus('running', {
       currentRun: targetRun,
       totalRuns,
       attemptRun: attemptRuns,
     });
-    await executeStepAndWait(3, AUTO_STEP_DELAYS[3]);
+    if (isStepDoneStatus(step3Status)) {
+      await addLog(`自动运行：步骤 3 当前状态为 ${step3Status}，将直接继续后续流程。`, 'info');
+    } else {
+      await executeStepAndWait(3, AUTO_STEP_DELAYS[3]);
+    }
   } else {
     await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：继续执行剩余流程（第 ${attemptRuns} 次尝试）===`, 'info');
   }
@@ -5177,6 +5204,7 @@ const signupFlowHelpers = self.MultiPageSignupFlowHelpers?.createSignupFlowHelpe
   ensureLuckmailPurchaseForFlow,
   getTabId,
   isGeneratedAliasProvider,
+  isSignupEmailVerificationPageUrl,
   isHotmailProvider,
   isLuckmailProvider,
   isSignupPasswordPageUrl,
@@ -5228,7 +5256,7 @@ const step2Executor = self.MultiPageBackgroundStep2?.createStep2Executor({
   completeStepFromBackground,
   ensureContentScriptReadyOnTab,
   ensureSignupEntryPageReady,
-  ensureSignupPasswordPageReadyInTab,
+  ensureSignupPostEmailPageReadyInTab,
   getTabId,
   isTabAlive,
   resolveSignupEmailForFlow,
@@ -5455,6 +5483,10 @@ async function ensureSignupEntryPageReady(step = 1) {
 
 async function ensureSignupPasswordPageReadyInTab(tabId, step = 2, options = {}) {
   return signupFlowHelpers.ensureSignupPasswordPageReadyInTab(tabId, step, options);
+}
+
+async function ensureSignupPostEmailPageReadyInTab(tabId, step = 2, options = {}) {
+  return signupFlowHelpers.ensureSignupPostEmailPageReadyInTab(tabId, step, options);
 }
 
 async function resolveSignupEmailForFlow(state) {

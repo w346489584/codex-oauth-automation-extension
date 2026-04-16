@@ -52,6 +52,13 @@
         && /\/create-account\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
     }
 
+    function isSignupEmailVerificationPageUrl(rawUrl) {
+      const parsed = parseUrlSafely(rawUrl);
+      if (!parsed) return false;
+      return isSignupPageHost(parsed.hostname)
+        && /\/email-verification(?:[/?#]|$)/i.test(parsed.pathname || '');
+    }
+
     function is163MailHost(hostname = '') {
       return hostname === 'mail.163.com'
         || hostname.endsWith('.mail.163.com')
@@ -154,6 +161,7 @@
       is163MailHost,
       isLocalCpaUrl,
       isLocalhostOAuthCallbackUrl,
+      isSignupEmailVerificationPageUrl,
       isSignupEntryHost,
       isSignupPageHost,
       isSignupPasswordPageUrl,

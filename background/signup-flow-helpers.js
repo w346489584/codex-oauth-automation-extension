@@ -3,18 +3,16 @@
 })(typeof self !== 'undefined' ? self : globalThis, function createSignupFlowHelpersModule() {
   function createSignupFlowHelpers(deps = {}) {
     const {
-      addLog,
       buildGeneratedAliasEmail,
       chrome,
       ensureContentScriptReadyOnTab,
       ensureHotmailAccountForFlow,
       ensureLuckmailPurchaseForFlow,
-      getTabId,
       isGeneratedAliasProvider,
       isHotmailProvider,
       isLuckmailProvider,
+      isSignupEmailVerificationPageUrl,
       isSignupPasswordPageUrl,
-      isTabAlive,
       reuseOrCreateTab,
       sendToContentScriptResilient,
       setEmailState,
@@ -60,17 +58,46 @@
       return { tabId, result: result || {} };
     }
 
-    async function ensureSignupPasswordPageReadyInTab(tabId, step = 2, options = {}) {
+    function resolveSignupPostEmailState(rawUrl) {
+      if (isSignupPasswordPageUrl(rawUrl)) {
+        return 'password_page';
+      }
+      if (isSignupEmailVerificationPageUrl(rawUrl)) {
+        return 'verification_page';
+      }
+      return '';
+    }
+
+    async function ensureSignupPostEmailPageReadyInTab(tabId, step = 2, options = {}) {
       const { skipUrlWait = false } = options;
+      let landingUrl = '';
+      let landingState = '';
 
       if (!skipUrlWait) {
-        const matchedTab = await waitForTabUrlMatch(tabId, (url) => isSignupPasswordPageUrl(url), {
+        const matchedTab = await waitForTabUrlMatch(tabId, (url) => Boolean(resolveSignupPostEmailState(url)), {
           timeoutMs: 45000,
           retryDelayMs: 300,
         });
         if (!matchedTab) {
-          throw new Error('等待进入密码页超时，请检查邮箱提交后页面是否仍停留在官网或邮箱页。');
+          throw new Error('等待邮箱提交后的页面跳转超时，请检查页面是否仍停留在邮箱输入页。');
         }
+
+        landingUrl = matchedTab.url || '';
+        landingState = resolveSignupPostEmailState(landingUrl);
+      }
+
+      if (!landingState) {
+        try {
+          const currentTab = await chrome.tabs.get(tabId);
+          landingUrl = landingUrl || currentTab?.url || '';
+          landingState = resolveSignupPostEmailState(landingUrl);
+        } catch {
+          landingUrl = landingUrl || '';
+        }
+      }
+
+      if (!landingState) {
+        throw new Error(`邮箱提交后未能识别当前页面，既不是密码页也不是邮箱验证码页。URL: ${landingUrl || 'unknown'}`);
       }
 
       await ensureContentScriptReadyOnTab('signup-page', tabId, {
@@ -78,8 +105,18 @@
         injectSource: 'signup-page',
         timeoutMs: 45000,
         retryDelayMs: 900,
-        logMessage: `步骤 ${step}：密码页仍在加载，正在重试连接内容脚本...`,
+        logMessage: landingState === 'verification_page'
+          ? `步骤 ${step}：邮箱验证码页仍在加载，正在等待页面恢复...`
+          : `步骤 ${step}：密码页仍在加载，正在重试连接内容脚本...`,
       });
+
+      if (landingState === 'verification_page') {
+        return {
+          ready: true,
+          state: landingState,
+          url: landingUrl,
+        };
+      }
 
       const result = await sendToContentScriptResilient('signup-page', {
         type: 'ENSURE_SIGNUP_PASSWORD_PAGE_READY',
@@ -96,7 +133,20 @@
         throw new Error(result.error);
       }
 
-      return result || {};
+      return {
+        ...(result || {}),
+        ready: true,
+        state: landingState,
+        url: landingUrl,
+      };
+    }
+
+    async function ensureSignupPasswordPageReadyInTab(tabId, step = 2, options = {}) {
+      const result = await ensureSignupPostEmailPageReadyInTab(tabId, step, options);
+      if (result.state !== 'password_page') {
+        throw new Error(`当前页面不是密码页，实际落地为 ${result.state || 'unknown'}。URL: ${result.url || 'unknown'}`);
+      }
+      return result;
     }
 
     async function resolveSignupEmailForFlow(state) {
@@ -128,6 +178,7 @@
 
     return {
       ensureSignupEntryPageReady,
+      ensureSignupPostEmailPageReadyInTab,
       ensureSignupPasswordPageReadyInTab,
       openSignupEntryTab,
       resolveSignupEmailForFlow,

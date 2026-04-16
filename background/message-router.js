@@ -109,6 +109,19 @@
           }
           break;
         }
+        case 2:
+          if (payload.email) {
+            await setEmailState(payload.email);
+          }
+          if (payload.skippedPasswordStep) {
+            const latestState = await getState();
+            const step3Status = latestState.stepStatuses?.[3];
+            if (step3Status !== 'running' && step3Status !== 'completed' && step3Status !== 'manual_completed') {
+              await setStepStatus(3, 'skipped');
+              await addLog('步骤 2：提交邮箱后页面直接进入邮箱验证码页，已自动跳过步骤 3。', 'warn');
+            }
+          }
+          break;
         case 3:
           if (payload.email) await setEmailState(payload.email);
           if (payload.signupVerificationRequestedAt) {
