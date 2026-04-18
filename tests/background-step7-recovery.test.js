@@ -139,3 +139,65 @@ test('step 8 disables resend interval for 2925 mailbox polling', async () => {
   assert.equal(capturedOptions.beforeSubmit, undefined);
   assert.equal(typeof capturedOptions.getRemainingTimeMs, 'function');
 });
+
+test('step 8 does not rerun step 7 when verification submit lands on add-phone', async () => {
+  const calls = {
+    executeStep7: 0,
+    logs: [],
+  };
+
+  const executor = api.createStep8Executor({
+    addLog: async (message, level = 'info') => {
+      calls.logs.push({ message, level });
+    },
+    chrome: {
+      tabs: {
+        update: async () => {},
+      },
+    },
+    CLOUDFLARE_TEMP_EMAIL_PROVIDER: 'cloudflare-temp-email',
+    confirmCustomVerificationStepBypass: async () => {},
+    ensureStep8VerificationPageReady: async () => ({ state: 'verification_page' }),
+    executeStep7: async () => {
+      calls.executeStep7 += 1;
+    },
+    getOAuthFlowRemainingMs: async () => 8000,
+    getOAuthFlowStepTimeoutMs: async (defaultTimeoutMs) => Math.min(defaultTimeoutMs, 8000),
+    getMailConfig: () => ({
+      provider: 'qq',
+      label: 'QQ 邮箱',
+      source: 'mail-qq',
+      url: 'https://mail.qq.com',
+      navigateOnReuse: false,
+    }),
+    getState: async () => ({ email: 'user@example.com', password: 'secret' }),
+    getTabId: async (sourceName) => (sourceName === 'signup-page' ? 1 : 2),
+    HOTMAIL_PROVIDER: 'hotmail-api',
+    isTabAlive: async () => true,
+    isVerificationMailPollingError: () => false,
+    LUCKMAIL_PROVIDER: 'luckmail-api',
+    resolveVerificationStep: async () => {
+      throw new Error('步骤 8：验证码提交后页面进入手机号页面，当前流程无法继续自动授权。 URL: https://auth.openai.com/add-phone');
+    },
+    reuseOrCreateTab: async () => {},
+    setState: async () => {},
+    setStepStatus: async () => {},
+    shouldUseCustomRegistrationEmail: () => false,
+    sleepWithStop: async () => {},
+    STANDARD_MAIL_VERIFICATION_RESEND_INTERVAL_MS: 25000,
+    STEP7_MAIL_POLLING_RECOVERY_MAX_ATTEMPTS: 8,
+    throwIfStopped: () => {},
+  });
+
+  await assert.rejects(
+    () => executor.executeStep8({
+      email: 'user@example.com',
+      password: 'secret',
+      oauthUrl: 'https://oauth.example/latest',
+    }),
+    /add-phone/
+  );
+
+  assert.equal(calls.executeStep7, 0);
+  assert.ok(!calls.logs.some(({ message }) => /准备从步骤 7 重新开始/.test(message)));
+});

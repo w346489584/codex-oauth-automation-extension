@@ -53,6 +53,7 @@ function extractFunction(name) {
 }
 
 const bundle = [
+  extractFunction('isAddPhoneAuthFailure'),
   extractFunction('isAddPhoneAuthUrl'),
   extractFunction('isAddPhoneAuthState'),
   extractFunction('getPostStep6AutoRestartDecision'),
@@ -196,6 +197,22 @@ test('auto-run stops restarting once add-phone is detected', async () => {
   assert.equal(result.events.invalidations.length, 0);
   assert.deepStrictEqual(result.events.steps, [7]);
   assert.ok(result.events.logs.some(({ message }) => /进入 add-phone/.test(message)));
+});
+
+test('auto-run stops restarting on generic phone-page failure messages even without add-phone url', async () => {
+  const harness = createHarness({
+    failureStep: 9,
+    failureBudget: 1,
+    failureMessage: '步骤 8：当前认证页进入手机号页面，当前流程无法继续自动授权。',
+    authState: { state: 'password_page', url: 'https://auth.openai.com/log-in' },
+  });
+
+  const result = await harness.runAndCaptureError();
+
+  assert.ok(result?.error);
+  assert.equal(result.events.invalidations.length, 0);
+  assert.deepStrictEqual(result.events.steps, [7, 8, 9]);
+  assert.ok(!result.events.logs.some(({ message }) => /回到步骤 7 重新开始授权流程/.test(message)));
 });
 
 test('auto-run stop errors after step 7 are rethrown immediately instead of restarting', async () => {

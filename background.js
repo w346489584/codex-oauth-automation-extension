@@ -3844,6 +3844,14 @@ function isVerificationMailPollingError(error) {
   return /未在 .*邮箱中找到新的匹配邮件|未在 Hotmail 收件箱中找到新的匹配验证码|邮箱轮询结束，但未获取到验证码|无法获取新的(?:注册|登录)验证码|页面未能重新就绪|页面通信异常|did not respond in \d+s/i.test(message);
 }
 
+function isAddPhoneAuthFailure(error) {
+  if (typeof loggingStatus !== 'undefined' && loggingStatus?.isAddPhoneAuthFailure) {
+    return loggingStatus.isAddPhoneAuthFailure(error);
+  }
+  const message = getErrorMessage(error);
+  return /https:\/\/auth\.openai\.com\/add-phone(?:[/?#]|$)|\badd-phone\b|添加手机号|手机号码|手机号页|手机号页面|手机号|phone\s+number|telephone/i.test(message);
+}
+
 function getLoginAuthStateLabel(state) {
   if (typeof loggingStatus !== 'undefined' && loggingStatus?.getLoginAuthStateLabel) {
     return loggingStatus.getLoginAuthStateLabel(state);
@@ -5181,6 +5189,7 @@ const autoRunController = self.MultiPageBackgroundAutoRunController?.createAutoR
   getState,
   getStopRequested: () => stopRequested,
   hasSavedProgress,
+  isAddPhoneAuthFailure,
   isRestartCurrentAttemptError,
   isStopError,
   launchAutoRunTimerPlan,
@@ -5788,6 +5797,7 @@ const step7Executor = self.MultiPageBackgroundStep7?.createStep7Executor({
   getLoginAuthStateLabel,
   getOAuthFlowStepTimeoutMs,
   getState,
+  isAddPhoneAuthFailure,
   isStep6RecoverableResult,
   isStep6SuccessResult,
   refreshOAuthUrlBeforeStep6,
@@ -6366,7 +6376,7 @@ async function getPostStep6AutoRestartDecision(step, error) {
     };
   }
 
-  if (isAddPhoneAuthUrl(errorMessage)) {
+  if (isAddPhoneAuthFailure(error) || isAddPhoneAuthUrl(errorMessage)) {
     return {
       shouldRestart: false,
       blockedByAddPhone: true,
@@ -6438,6 +6448,11 @@ async function ensureStep8VerificationPageReady(options = {}) {
   if (pageState.state === 'login_timeout_error_page') {
     const urlPart = pageState.url ? ` URL: ${pageState.url}` : '';
     throw new Error(`STEP8_RESTART_STEP7::步骤 8：当前认证页进入登录超时报错页，请回到步骤 7 重新开始。${urlPart}`.trim());
+  }
+
+  if (pageState.state === 'add_phone_page') {
+    const urlPart = pageState.url ? ` URL: ${pageState.url}` : '';
+    throw new Error(`步骤 8：当前认证页进入手机号页面，当前流程无法继续自动授权。${urlPart}`.trim());
   }
 
   const stateLabel = getLoginAuthStateLabel(pageState.state);

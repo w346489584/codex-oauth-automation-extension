@@ -9,6 +9,10 @@
       getLoginAuthStateLabel,
       getOAuthFlowStepTimeoutMs,
       getState,
+      isAddPhoneAuthFailure = (error) => {
+        const message = String(typeof error === 'string' ? error : error?.message || '');
+        return /https:\/\/auth\.openai\.com\/add-phone(?:[/?#]|$)|\badd-phone\b|添加手机号|手机号码|手机号页|手机号页面|手机号|phone\s+number|telephone/i.test(message);
+      },
       isStep6RecoverableResult,
       isStep6SuccessResult,
       refreshOAuthUrlBeforeStep6,
@@ -18,11 +22,6 @@
       STEP6_MAX_ATTEMPTS,
       throwIfStopped,
     } = deps;
-
-    function isAddPhoneAuthFailure(error) {
-      const message = String(typeof error === 'string' ? error : error?.message || '');
-      return /https:\/\/auth\.openai\.com\/add-phone(?:[/?#]|$)|add-phone|手机号页面|手机号码|手机号|phone\s+number|telephone/i.test(message);
-    }
 
     async function executeStep7(state) {
       if (!state.email) {

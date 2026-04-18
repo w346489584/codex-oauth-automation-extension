@@ -642,6 +642,11 @@
             continue;
           }
 
+          if (submitResult.addPhonePage) {
+            const urlPart = submitResult.url ? ` URL: ${submitResult.url}` : '';
+            throw new Error(`步骤 ${step}：验证码提交后页面进入手机号页面，当前流程无法继续自动授权。${urlPart}`.trim());
+          }
+
           await setState({
             lastEmailTimestamp: result.emailTimestamp,
             [stateKey]: result.code,

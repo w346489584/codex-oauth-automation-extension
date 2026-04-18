@@ -21,6 +21,7 @@
       getRunningSteps,
       getState,
       hasSavedProgress,
+      isAddPhoneAuthFailure,
       isRestartCurrentAttemptError,
       isStopError,
       launchAutoRunTimerPlan,
@@ -456,11 +457,35 @@
 
             const reason = getErrorMessage(err);
             roundSummary.failureReasons.push(reason);
-            const canRetry = autoRunSkipFailures && attemptRun < maxAttemptsForRound;
+            const blockedByAddPhone = typeof isAddPhoneAuthFailure === 'function' && isAddPhoneAuthFailure(err);
+            const canRetry = !blockedByAddPhone && autoRunSkipFailures && attemptRun < maxAttemptsForRound;
+
+            if (blockedByAddPhone) {
+              roundSummary.status = 'failed';
+              roundSummary.finalFailureReason = reason;
+            }
 
             await setState({
               autoRunRoundSummaries: serializeAutoRunRoundSummaries(totalRuns, roundSummaries),
             });
+
+            if (blockedByAddPhone) {
+              await appendRoundRecordIfNeeded('failed', reason);
+              cancelPendingCommands('当前轮因认证流程进入 add-phone 已终止。');
+              await broadcastStopToContentScripts();
+              await addLog(
+                `第 ${targetRun}/${totalRuns} 轮触发 add-phone/手机号页，当前自动运行将立即停止，不再重试或进入下一轮。`,
+                'warn'
+              );
+              stoppedEarly = true;
+              await broadcastAutoRunStatus('stopped', {
+                currentRun: targetRun,
+                totalRuns,
+                attemptRun,
+                sessionId: 0,
+              });
+              break;
+            }
 
             if (canRetry) {
               const retryIndex = attemptRun;

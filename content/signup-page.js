@@ -1442,7 +1442,7 @@ async function waitForVerificationSubmitOutcome(step, timeout) {
     }
 
     if (step === 8 && isAddPhonePageReady()) {
-      return { success: true, addPhonePage: true };
+      return { success: true, addPhonePage: true, url: location.href };
     }
 
     await sleep(150);
@@ -1499,7 +1499,7 @@ async function fillVerificationCode(step, payload) {
         if (outcome.invalidCode) {
           log(`步骤 ${step}：验证码被拒绝：${outcome.errorText}`, 'warn');
         } else if (outcome.addPhonePage) {
-          log(`步骤 ${step}：验证码已通过，并已跳转到手机号页面。`, 'ok');
+          log(`步骤 ${step}：验证码提交后页面进入手机号页面，当前流程将停止自动授权。`, 'warn');
         } else {
           log(`步骤 ${step}：验证码已通过${outcome.assumed ? '（按成功推定）' : ''}。`, 'ok');
         }
@@ -1541,7 +1541,7 @@ async function fillVerificationCode(step, payload) {
   if (outcome.invalidCode) {
     log(`步骤 ${step}：验证码被拒绝：${outcome.errorText}`, 'warn');
   } else if (outcome.addPhonePage) {
-    log(`步骤 ${step}：验证码已通过，并已跳转到手机号页面。`, 'ok');
+    log(`步骤 ${step}：验证码提交后页面进入手机号页面，当前流程将停止自动授权。`, 'warn');
   } else {
     log(`步骤 ${step}：验证码已通过${outcome.assumed ? '（按成功推定）' : ''}。`, 'ok');
   }
