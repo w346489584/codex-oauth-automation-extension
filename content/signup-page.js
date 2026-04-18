@@ -1009,7 +1009,7 @@ async function recoverCurrentAuthRetryPage(payload = {}) {
     }
 
     if (retryState.operationTimedOutBlocked) {
-      throw new Error('NETWORK_TIMEOUT_BLOCKED::请检查当前网络节点是否稳定，若你使用的代理 / /VPN 节点无延迟过高问题，请换一个服务器继续使用此邮箱继续登陆');
+      throw new Error('NETWORK_TIMEOUT_BLOCKED::请检查当前网络节点是否稳定，若你使用的代理 /VPN 节点无延迟过高问题，请换一个服务器继续使用此邮箱继续登陆');
     }
     if (retryState.retryButton && retryState.retryEnabled) {
       clickCount += 1;
