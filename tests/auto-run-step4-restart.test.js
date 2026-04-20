@@ -55,6 +55,7 @@ function extractFunction(name) {
 const bundle = [
   extractFunction('isAddPhoneAuthUrl'),
   extractFunction('isAddPhoneAuthState'),
+  extractFunction('isMail2925ThreadTerminatedError'),
   extractFunction('isSignupUserAlreadyExistsFailure'),
   extractFunction('getPostStep6AutoRestartDecision'),
   extractFunction('runAutoSequenceFromStep'),

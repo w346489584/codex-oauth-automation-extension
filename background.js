@@ -2,8 +2,10 @@
 
 importScripts(
   'managed-alias-utils.js',
+  'mail2925-utils.js',
   'background/account-run-history.js',
   'background/contribution-oauth.js',
+  'background/mail-2925-session.js',
   'background/panel-bridge.js',
   'background/generated-email-helpers.js',
   'background/signup-flow-helpers.js',
@@ -57,6 +59,16 @@ const {
   pickVerificationMessageWithTimeFallback,
   shouldClearHotmailCurrentSelection,
 } = self.HotmailUtils;
+const {
+  MAIL2925_LIMIT_COOLDOWN_MS,
+  findMail2925Account,
+  getMail2925AccountStatus,
+  normalizeMail2925Account,
+  normalizeMail2925Accounts,
+  parseMail2925ImportText,
+  pickMail2925AccountForRun,
+  upsertMail2925AccountInList,
+} = self.Mail2925Utils;
 const {
   fetchMicrosoftMailboxMessages,
 } = self.MultiPageMicrosoftEmail;
@@ -248,6 +260,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   verificationResendCount: DEFAULT_VERIFICATION_RESEND_COUNT,
   mailProvider: '163',
   mail2925Mode: DEFAULT_MAIL_2925_MODE,
+  mail2925UseAccountPool: false,
   emailGenerator: 'duck',
   autoDeleteUsedIcloudAlias: false,
   icloudHostPreference: 'auto',
@@ -270,6 +283,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   cloudflareTempEmailDomain: '',
   cloudflareTempEmailDomains: [],
   hotmailAccounts: [],
+  mail2925Accounts: [],
 };
 
 const PERSISTED_SETTING_KEYS = Object.keys(PERSISTED_SETTING_DEFAULTS);
@@ -344,6 +358,7 @@ const DEFAULT_STATE = {
   oauthFlowDeadlineAt: null,
   oauthFlowDeadlineSourceUrl: null,
   currentHotmailAccountId: null,
+  currentMail2925AccountId: null,
   preferredIcloudHost: '',
 };
 
@@ -874,6 +889,8 @@ function normalizePersistentSettingValue(key, value) {
       return normalizeMailProvider(value);
     case 'mail2925Mode':
       return normalizeMail2925Mode(value);
+    case 'mail2925UseAccountPool':
+      return Boolean(value);
     case 'emailGenerator':
       return normalizeEmailGenerator(value);
     case 'autoDeleteUsedIcloudAlias':
@@ -914,6 +931,8 @@ function normalizePersistentSettingValue(key, value) {
       return normalizeCloudflareTempEmailDomains(value);
     case 'hotmailAccounts':
       return normalizeHotmailAccounts(value);
+    case 'mail2925Accounts':
+      return normalizeMail2925Accounts(value);
     default:
       return value;
   }
@@ -2240,6 +2259,12 @@ function getManagedAliasBaseEmail(state = {}, provider = state?.mailProvider) {
   }
 
   if (normalizedProvider === '2925') {
+    const currentAccount = Boolean(state?.mail2925UseAccountPool)
+      ? getCurrentMail2925Account(state)
+      : null;
+    if (currentAccount?.email) {
+      return currentAccount.email;
+    }
     const mail2925BaseEmail = String(state?.mail2925BaseEmail || '').trim();
     if (mail2925BaseEmail) {
       return mail2925BaseEmail;
@@ -5355,6 +5380,79 @@ function getEmailGeneratorLabel(generator) {
   if (generator === CLOUDFLARE_TEMP_EMAIL_GENERATOR) return 'Cloudflare Temp Email';
   return 'Duck 邮箱';
 }
+const mail2925SessionManager = self.MultiPageBackgroundMail2925Session?.createMail2925SessionManager({
+  addLog,
+  broadcastDataUpdate,
+  chrome,
+  findMail2925Account,
+  getMail2925AccountStatus,
+  getState,
+  isMail2925AccountAvailable: self.Mail2925Utils?.isMail2925AccountAvailable,
+  MAIL2925_LIMIT_COOLDOWN_MS,
+  normalizeMail2925Account,
+  normalizeMail2925Accounts,
+  pickMail2925AccountForRun,
+  reuseOrCreateTab,
+  sendToMailContentScriptResilient,
+  setPersistentSettings,
+  setState,
+  throwIfStopped,
+  upsertMail2925AccountInList,
+});
+
+async function upsertMail2925Account(input = {}) {
+  return mail2925SessionManager.upsertMail2925Account(input);
+}
+
+async function deleteMail2925Account(accountId) {
+  return mail2925SessionManager.deleteMail2925Account(accountId);
+}
+
+async function deleteMail2925Accounts(mode = 'all') {
+  return mail2925SessionManager.deleteMail2925Accounts(mode);
+}
+
+async function patchMail2925Account(accountId, updates = {}) {
+  return mail2925SessionManager.patchMail2925Account(accountId, updates);
+}
+
+async function setCurrentMail2925Account(accountId, options = {}) {
+  return mail2925SessionManager.setCurrentMail2925Account(accountId, options);
+}
+
+function getCurrentMail2925Account(state = null) {
+  return mail2925SessionManager.getCurrentMail2925Account(state || {});
+}
+
+async function ensureMail2925AccountForFlow(options = {}) {
+  return mail2925SessionManager.ensureMail2925AccountForFlow(options);
+}
+
+async function ensureMail2925MailboxSession(options = {}) {
+  return mail2925SessionManager.ensureMail2925MailboxSession(options);
+}
+
+async function handleMail2925LimitReachedError(step, error) {
+  return mail2925SessionManager.handleMail2925LimitReachedError(step, error);
+}
+
+function isMail2925LimitReachedError(error) {
+  if (typeof mail2925SessionManager !== 'undefined' && mail2925SessionManager?.isMail2925LimitReachedError) {
+    return mail2925SessionManager.isMail2925LimitReachedError(error);
+  }
+  const message = String(typeof error === 'string' ? error : error?.message || '');
+  return /^MAIL2925_LIMIT_REACHED::/.test(message)
+    || /子邮箱.{0,12}已达上限|已达上限邮箱|子邮箱上限|邮箱已达上限/i.test(message);
+}
+
+function isMail2925ThreadTerminatedError(error) {
+  if (typeof mail2925SessionManager !== 'undefined' && mail2925SessionManager?.isMail2925ThreadTerminatedError) {
+    return mail2925SessionManager.isMail2925ThreadTerminatedError(error);
+  }
+  const message = String(typeof error === 'string' ? error : error?.message || '');
+  return /^MAIL2925_THREAD_TERMINATED::/.test(message);
+}
+
 const generatedEmailHelpers = self.MultiPageGeneratedEmailHelpers?.createGeneratedEmailHelpers({
   addLog,
   buildGeneratedAliasEmail,
@@ -5366,6 +5464,7 @@ const generatedEmailHelpers = self.MultiPageGeneratedEmailHelpers?.createGenerat
   getCloudflareTempEmailAddressFromResponse,
   getCloudflareTempEmailConfig,
   getState,
+  ensureMail2925AccountForFlow,
   joinCloudflareTempEmailUrl,
   normalizeCloudflareDomain,
   normalizeCloudflareTempEmailAddress,
@@ -5690,8 +5789,25 @@ async function ensureAutoEmailReady(targetRun, totalRuns, attemptRuns) {
       return currentState.email;
     }
 
-    const baseEmail = getManagedAliasBaseEmail(currentState);
-    if (!baseEmail && !currentState.email) {
+    let managedAliasState = currentState;
+    if (
+      String(currentState.mailProvider || '').trim().toLowerCase() === '2925'
+      && Boolean(currentState.mail2925UseAccountPool)
+    ) {
+      const account = await ensureMail2925AccountForFlow({
+        allowAllocate: true,
+        preferredAccountId: currentState.currentMail2925AccountId || null,
+        markUsed: true,
+      });
+      managedAliasState = {
+        ...(await getState()),
+        currentMail2925AccountId: account.id,
+      };
+      await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：已分配 2925 账号 ${account.email}（第 ${attemptRuns} 次尝试）===`, 'ok');
+    }
+
+    const baseEmail = getManagedAliasBaseEmail(managedAliasState);
+    if (!baseEmail && !managedAliasState.email) {
       const baseLabel = currentState.mailProvider === GMAIL_PROVIDER ? 'Gmail 原邮箱' : '2925 基邮箱';
       throw new Error(`${baseLabel}未设置，请先填写，或直接在“注册邮箱”中手动填写完整邮箱。`);
     }
@@ -5828,6 +5944,10 @@ async function runAutoSequenceFromStep(startStep, context = {}) {
 
       if (step === 4) {
         if (isSignupUserAlreadyExistsFailure(err)) {
+          throw err;
+        }
+        if (isMail2925ThreadTerminatedError(err)) {
+          await addLog(`步骤 4：2925 已切换账号并要求结束当前尝试：${getErrorMessage(err)}`, 'warn');
           throw err;
         }
         step4RestartCount += 1;
@@ -6019,6 +6139,7 @@ const signupFlowHelpers = self.MultiPageSignupFlowHelpers?.createSignupFlowHelpe
   chrome,
   ensureContentScriptReadyOnTab,
   ensureHotmailAccountForFlow,
+  ensureMail2925AccountForFlow,
   ensureLuckmailPurchaseForFlow,
   getTabId,
   isGeneratedAliasProvider,
@@ -6046,9 +6167,11 @@ const verificationFlowHelpers = self.MultiPageBackgroundVerificationFlow?.create
   }),
   getHotmailVerificationPollConfig,
   getHotmailVerificationRequestTimestamp,
+  handleMail2925LimitReachedError,
   getState,
   getTabId,
   HOTMAIL_PROVIDER,
+  isMail2925LimitReachedError,
   isStopError,
   LUCKMAIL_PROVIDER,
   MAIL_2925_VERIFICATION_INTERVAL_MS,
@@ -6099,6 +6222,7 @@ const step4Executor = self.MultiPageBackgroundStep4?.createStep4Executor({
   chrome,
   completeStepFromBackground,
   confirmCustomVerificationStepBypass: verificationFlowHelpers.confirmCustomVerificationStepBypass,
+  ensureMail2925MailboxSession,
   getMailConfig,
   getTabId,
   HOTMAIL_PROVIDER,
@@ -6144,6 +6268,7 @@ const step8Executor = self.MultiPageBackgroundStep8?.createStep8Executor({
   chrome,
   CLOUDFLARE_TEMP_EMAIL_PROVIDER,
   confirmCustomVerificationStepBypass: verificationFlowHelpers.confirmCustomVerificationStepBypass,
+  ensureMail2925MailboxSession,
   ensureStep8VerificationPageReady,
   getOAuthFlowRemainingMs,
   getOAuthFlowStepTimeoutMs,
@@ -6219,6 +6344,7 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   deleteUsedIcloudAliases,
   disableUsedLuckmailPurchases,
   doesStepUseCompletionSignal,
+  ensureMail2925MailboxSession,
   ensureManualInteractionAllowed,
   executeStep,
   executeStepViaCompletionSignal,
@@ -6254,12 +6380,15 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   launchAutoRunTimerPlan,
   listIcloudAliases,
   listLuckmailPurchasesForManagement,
+  getCurrentMail2925Account,
   normalizeHotmailAccounts,
+  normalizeMail2925Accounts,
   normalizeRunCount,
   AUTO_RUN_TIMER_KIND_SCHEDULED_START,
   notifyStepComplete,
   notifyStepError,
   patchHotmailAccount,
+  patchMail2925Account,
   registerTab,
   requestStop,
   resetState,
@@ -6267,6 +6396,7 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   scheduleAutoRun,
   selectLuckmailPurchase,
   setCurrentHotmailAccount,
+  setCurrentMail2925Account,
   setContributionMode,
   setEmailState,
   setEmailStateSilently,
@@ -6284,7 +6414,10 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   startAutoRunLoop,
   pollContributionStatus: (...args) => contributionOAuthManager?.pollContributionStatus?.(...args),
   syncHotmailAccounts,
+  deleteMail2925Account,
+  deleteMail2925Accounts,
   testHotmailAccountMailAccess,
+  upsertMail2925Account,
   upsertHotmailAccount,
   verifyHotmailAccount,
 });

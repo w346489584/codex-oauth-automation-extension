@@ -10,9 +10,11 @@
       confirmCustomVerificationStepBypassRequest,
       getHotmailVerificationPollConfig,
       getHotmailVerificationRequestTimestamp,
+      handleMail2925LimitReachedError,
       getState,
       getTabId,
       HOTMAIL_PROVIDER,
+      isMail2925LimitReachedError,
       isStopError,
       LUCKMAIL_PROVIDER,
       MAIL_2925_VERIFICATION_INTERVAL_MS,
@@ -417,6 +419,13 @@
             if (isStopError(err)) {
               throw err;
             }
+            if (mail?.provider === '2925' && typeof isMail2925LimitReachedError === 'function' && isMail2925LimitReachedError(err)) {
+              const latestState = await getState();
+              if (latestState?.mail2925UseAccountPool && typeof handleMail2925LimitReachedError === 'function') {
+                throw await handleMail2925LimitReachedError(step, err);
+              }
+              throw err;
+            }
             lastError = err;
             await addLog(`步骤 ${step}：${err.message}`, 'warn');
           }
@@ -552,6 +561,13 @@
           };
         } catch (err) {
           if (isStopError(err)) {
+            throw err;
+          }
+          if (mail?.provider === '2925' && typeof isMail2925LimitReachedError === 'function' && isMail2925LimitReachedError(err)) {
+            const latestState = await getState();
+            if (latestState?.mail2925UseAccountPool && typeof handleMail2925LimitReachedError === 'function') {
+              throw await handleMail2925LimitReachedError(step, err);
+            }
             throw err;
           }
           lastError = err;

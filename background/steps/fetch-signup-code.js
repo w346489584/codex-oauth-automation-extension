@@ -7,6 +7,7 @@
       chrome,
       completeStepFromBackground,
       confirmCustomVerificationStepBypass,
+      ensureMail2925MailboxSession,
       getMailConfig,
       getTabId,
       HOTMAIL_PROVIDER,
@@ -68,6 +69,14 @@
 
       throwIfStopped();
       if (mail.provider === HOTMAIL_PROVIDER || mail.provider === LUCKMAIL_PROVIDER || mail.provider === CLOUDFLARE_TEMP_EMAIL_PROVIDER) {
+        await addLog(`步骤 4：正在通过 ${mail.label} 轮询验证码...`);
+      } else if (mail.provider === '2925') {
+        if (state?.mail2925UseAccountPool && typeof ensureMail2925MailboxSession === 'function') {
+          await ensureMail2925MailboxSession({
+            accountId: state.currentMail2925AccountId || null,
+            actionLabel: '步骤 4：确认 2925 邮箱登录态',
+          });
+        }
         await addLog(`步骤 4：正在通过 ${mail.label} 轮询验证码...`);
       } else {
         await addLog(`步骤 4：正在打开${mail.label}...`);

@@ -13,6 +13,7 @@
       getCloudflareTempEmailAddressFromResponse,
       getCloudflareTempEmailConfig,
       getState,
+      ensureMail2925AccountForFlow,
       joinCloudflareTempEmailUrl,
       normalizeCloudflareDomain,
       normalizeCloudflareTempEmailAddress,
@@ -190,7 +191,7 @@
     async function fetchManagedAliasEmail(state, options = {}) {
       throwIfStopped();
       const provider = String(options.mailProvider || state?.mailProvider || '').trim().toLowerCase();
-      const mergedState = {
+      let mergedState = {
         ...(state || {}),
         mailProvider: provider,
       };
@@ -199,6 +200,22 @@
       }
       if (options.mail2925BaseEmail !== undefined) {
         mergedState.mail2925BaseEmail = String(options.mail2925BaseEmail || '').trim();
+      }
+      if (
+        provider === '2925'
+        && Boolean(mergedState.mail2925UseAccountPool)
+        && typeof ensureMail2925AccountForFlow === 'function'
+      ) {
+        const account = await ensureMail2925AccountForFlow({
+          allowAllocate: true,
+          preferredAccountId: mergedState.currentMail2925AccountId || null,
+        });
+        const latestState = await getState();
+        mergedState = {
+          ...latestState,
+          ...mergedState,
+          currentMail2925AccountId: account.id,
+        };
       }
 
       const email = buildGeneratedAliasEmail(mergedState);

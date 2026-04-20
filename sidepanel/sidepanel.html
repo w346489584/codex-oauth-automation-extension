@@ -261,7 +261,19 @@
       </div>
       <div class="data-row" id="row-email-prefix" style="display:none;">
         <span class="data-label" id="label-email-prefix">别名基邮箱</span>
-        <input type="text" id="input-email-prefix" class="data-input" placeholder="例如 yourname@example.com" />
+        <div class="data-inline mail2925-base-inline">
+          <input type="text" id="input-email-prefix" class="data-input mail2925-base-input" placeholder="例如 yourname@example.com" />
+          <select id="select-mail2925-pool-account" class="data-select mail2925-pool-select" style="display:none;">
+            <option value="">请选择号池邮箱</option>
+          </select>
+          <label class="toggle-switch mail2925-pool-toggle" id="label-mail2925-use-account-pool" for="input-mail2925-use-account-pool" style="display:none;" title="开启后只能从号池中选择 2925 基邮箱">
+            <input type="checkbox" id="input-mail2925-use-account-pool" />
+            <span class="toggle-switch-track" aria-hidden="true">
+              <span class="toggle-switch-thumb"></span>
+            </span>
+            <span>号池</span>
+          </label>
+        </div>
       </div>
       <div class="data-row" id="row-inbucket-host" style="display:none;">
         <span class="data-label">Inbucket</span>
@@ -280,23 +292,23 @@
       </div>
       <div class="data-row">
         <span class="data-label">延迟</span>
-        <div class="data-inline auto-delay-inline">
-          <div class="auto-delay-side auto-delay-side-left">
+        <div class="data-inline setting-pair">
+          <div class="setting-group setting-group-primary">
             <label class="toggle-switch" for="input-auto-delay-enabled">
               <input type="checkbox" id="input-auto-delay-enabled" />
               <span class="toggle-switch-track" aria-hidden="true">
                 <span class="toggle-switch-thumb"></span>
               </span>
             </label>
-            <div class="auto-delay-controls">
+            <div class="setting-controls">
               <input type="number" id="input-auto-delay-minutes" class="data-input auto-delay-input" value="30" min="1"
                 max="1440" step="1" title="启动前倒计时分钟数" />
               <span class="data-unit">分钟</span>
             </div>
           </div>
-          <div class="timing-field timing-field-labeled timing-field-right auto-delay-side auto-delay-side-right">
-            <span class="auto-delay-caption">步间间隔</span>
-            <div class="auto-delay-controls">
+          <div class="setting-group setting-group-secondary">
+            <span class="setting-caption">步间间隔</span>
+            <div class="setting-controls">
               <input type="number" id="input-auto-step-delay-seconds" class="data-input auto-delay-input" value=""
                 min="0" max="600" step="1" title="步间延迟秒数，0 或留空则不延迟" />
               <span class="data-unit">秒</span>
@@ -306,16 +318,18 @@
       </div>
       <div class="data-row">
         <span class="data-label">自动重试</span>
-        <div class="data-inline fallback-inline">
-          <label class="toggle-switch" for="input-auto-skip-failures">
-            <input type="checkbox" id="input-auto-skip-failures" />
-            <span class="toggle-switch-track" aria-hidden="true">
-              <span class="toggle-switch-thumb"></span>
-            </span>
-          </label>
-          <div class="timing-field timing-field-labeled timing-field-right fallback-thread-interval">
-            <span class="auto-delay-caption">线程间隔</span>
-            <div class="auto-delay-controls">
+        <div class="data-inline setting-pair">
+          <div class="setting-group setting-group-primary">
+            <label class="toggle-switch" for="input-auto-skip-failures">
+              <input type="checkbox" id="input-auto-skip-failures" />
+              <span class="toggle-switch-track" aria-hidden="true">
+                <span class="toggle-switch-thumb"></span>
+              </span>
+            </label>
+          </div>
+          <div class="setting-group setting-group-secondary">
+            <span class="setting-caption">线程间隔</span>
+            <div class="setting-controls">
               <input type="number" id="input-auto-skip-failures-thread-interval-minutes" class="data-input auto-delay-input" value="0"
                 min="0" max="1440" step="1" title="兜底模式下，两轮线程之间的等待分钟数" />
               <span class="data-unit">分钟</span>
@@ -325,21 +339,18 @@
       </div>
       <div class="data-row" id="row-account-run-history-text-enabled">
         <span class="data-label">本地同步</span>
-        <div class="data-inline">
-          <label class="toggle-switch" for="input-account-run-history-text-enabled">
-            <input type="checkbox" id="input-account-run-history-text-enabled" />
-            <span class="toggle-switch-track" aria-hidden="true">
-              <span class="toggle-switch-thumb"></span>
-            </span>
-          </label>
-        </div>
-      </div>
-      <div class="data-row" id="row-verification-resend-count">
-        <span class="data-label">验证码</span>
-        <div class="data-inline">
-          <div class="timing-field timing-field-labeled timing-field-right setting-inline-right">
-            <span class="auto-delay-caption">验证码重发</span>
-            <div class="auto-delay-controls">
+        <div class="data-inline setting-pair">
+          <div class="setting-group setting-group-primary">
+            <label class="toggle-switch" for="input-account-run-history-text-enabled">
+              <input type="checkbox" id="input-account-run-history-text-enabled" />
+              <span class="toggle-switch-track" aria-hidden="true">
+                <span class="toggle-switch-thumb"></span>
+              </span>
+            </label>
+          </div>
+          <div class="setting-group setting-group-secondary">
+            <span class="setting-caption">验证码重发</span>
+            <div class="setting-controls">
               <input type="number" id="input-verification-resend-count" class="data-input auto-delay-input" value="4"
                 min="0" max="20" step="1" title="自动点击重新发送验证码的次数" />
               <span class="data-unit">次</span>
@@ -422,6 +433,40 @@
       </div>
       <div id="hotmail-list-shell" class="hotmail-list-shell is-collapsed">
         <div id="hotmail-accounts-list" class="hotmail-accounts-list"></div>
+      </div>
+    </div>
+    <div id="mail2925-section" class="data-card hotmail-card" style="display:none;">
+      <div class="section-mini-header">
+        <div class="section-mini-copy">
+          <span class="section-label">2925 账号池</span>
+        </div>
+        <div class="section-mini-actions">
+          <button id="btn-delete-all-mail2925-accounts" class="btn btn-ghost btn-xs" type="button">全部删除</button>
+          <button id="btn-toggle-mail2925-list" class="btn btn-ghost btn-xs" type="button" aria-expanded="false">展开列表</button>
+        </div>
+      </div>
+      <div class="data-row">
+        <span class="data-label">邮箱</span>
+        <input type="text" id="input-mail2925-email" class="data-input" placeholder="name@2925.com" />
+      </div>
+      <div class="data-row">
+        <span class="data-label">密码</span>
+        <input type="password" id="input-mail2925-password" class="data-input" placeholder="2925 登录密码" />
+      </div>
+      <div class="data-row hotmail-actions-row">
+        <span class="data-label"></span>
+        <button id="btn-add-mail2925-account" class="btn btn-primary btn-sm" type="button">添加账号</button>
+      </div>
+      <div class="data-row hotmail-import-row">
+        <span class="data-label">批量导入</span>
+        <div class="hotmail-import-box">
+          <textarea id="input-mail2925-import" class="data-textarea mono"
+            placeholder="邮箱----密码&#10;name@2925.com----password"></textarea>
+          <button id="btn-import-mail2925-accounts" class="btn btn-outline btn-sm" type="button">导入</button>
+        </div>
+      </div>
+      <div id="mail2925-list-shell" class="hotmail-list-shell is-collapsed">
+        <div id="mail2925-accounts-list" class="hotmail-accounts-list"></div>
       </div>
     </div>
     <div id="luckmail-section" class="data-card luckmail-card" style="display:none;">
@@ -656,12 +701,14 @@
   <div id="toast-container"></div>
   <input id="input-import-settings-file" type="file" accept=".json,application/json" hidden />
   <script src="../managed-alias-utils.js"></script>
+  <script src="../mail2925-utils.js"></script>
   <script src="../icloud-utils.js"></script>
   <script src="../hotmail-utils.js"></script>
   <script src="../luckmail-utils.js"></script>
   <script src="../data/step-definitions.js"></script>
   <script src="update-service.js"></script>
   <script src="hotmail-manager.js"></script>
+  <script src="mail-2925-manager.js"></script>
   <script src="icloud-manager.js"></script>
   <script src="luckmail-manager.js"></script>
   <script src="contribution-mode.js"></script>

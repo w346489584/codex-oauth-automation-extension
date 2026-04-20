@@ -374,6 +374,7 @@
               emailGenerator: prevState.emailGenerator,
               gmailBaseEmail: prevState.gmailBaseEmail,
               mail2925BaseEmail: prevState.mail2925BaseEmail,
+              currentMail2925AccountId: prevState.currentMail2925AccountId,
               emailPrefix: prevState.emailPrefix,
               inbucketHost: prevState.inbucketHost,
               inbucketMailbox: prevState.inbucketMailbox,

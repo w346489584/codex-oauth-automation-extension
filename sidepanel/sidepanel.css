@@ -697,6 +697,21 @@ header {
   min-width: 0;
 }
 
+.mail2925-base-inline {
+  gap: 10px;
+}
+
+.mail2925-base-input,
+.mail2925-pool-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.mail2925-pool-toggle {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .data-value-actions {
   justify-content: space-between;
 }
@@ -1395,34 +1410,49 @@ header {
   flex-shrink: 0;
 }
 
-.fallback-inline {
-  justify-content: space-between;
+.setting-pair {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
 }
 
-.fallback-thread-interval {
-  margin-left: auto;
-}
-
-.timing-field {
+.setting-group {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
 }
 
-.timing-field-labeled {
-  min-width: 196px;
-  justify-content: flex-end;
+.setting-group-primary {
+  flex: 1;
+  min-width: 112px;
 }
 
-.timing-field-right {
+.setting-group-secondary {
   margin-left: auto;
-}
-
-.setting-inline-right {
   min-width: 196px;
   justify-content: flex-end;
+}
+
+.setting-caption {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-width: 56px;
+  text-align: right;
+}
+
+.setting-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .toggle-switch {
@@ -1480,51 +1510,6 @@ header {
 
 .toggle-switch input:disabled + .toggle-switch-track {
   opacity: 0.55;
-}
-
-.auto-delay-inline {
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: nowrap;
-}
-
-.auto-delay-side {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 0 0 auto;
-  min-width: 0;
-}
-
-.auto-delay-side-right {
-  flex: 0 0 auto;
-}
-
-.auto-delay-check {
-  flex: 0 0 auto;
-  align-items: center;
-}
-
-.auto-delay-check span {
-  white-space: nowrap;
-}
-
-.auto-delay-caption {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  flex: 0 0 auto;
-  white-space: nowrap;
-  min-width: 56px;
-  text-align: right;
-}
-
-.auto-delay-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
 }
 
 .auto-delay-input {

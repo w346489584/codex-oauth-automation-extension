@@ -25,7 +25,6 @@
       dom.rowSub2ApiGroup,
       dom.rowSub2ApiDefaultProxy,
       dom.rowCustomPassword,
-      dom.rowAccountRunHistoryTextEnabled,
       dom.rowAccountRunHistoryHelperBaseUrl,
     ].filter(Boolean);
 

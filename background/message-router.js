@@ -25,6 +25,7 @@
       deleteUsedIcloudAliases,
       disableUsedLuckmailPurchases,
       doesStepUseCompletionSignal,
+      ensureMail2925MailboxSession,
       ensureManualInteractionAllowed,
       executeStep,
       executeStepViaCompletionSignal,
@@ -35,6 +36,7 @@
       findHotmailAccount,
       flushCommand,
       getCurrentLuckmailPurchase,
+      getCurrentMail2925Account,
       getPendingAutoRunTimerPlan,
       getSourceLabel,
       getState,
@@ -52,10 +54,12 @@
       listIcloudAliases,
       listLuckmailPurchasesForManagement,
       normalizeHotmailAccounts,
+      normalizeMail2925Accounts,
       normalizeRunCount,
       AUTO_RUN_TIMER_KIND_SCHEDULED_START,
       notifyStepComplete,
       notifyStepError,
+      patchMail2925Account,
       patchHotmailAccount,
       pollContributionStatus,
       registerTab,
@@ -65,6 +69,7 @@
       resumeAutoRun,
       scheduleAutoRun,
       selectLuckmailPurchase,
+      setCurrentMail2925Account,
       setCurrentHotmailAccount,
       setContributionMode,
       setEmailState,
@@ -81,8 +86,11 @@
       skipStep,
       startContributionFlow,
       startAutoRunLoop,
+      deleteMail2925Account,
+      deleteMail2925Accounts,
       syncHotmailAccounts,
       testHotmailAccountMailAccess,
+      upsertMail2925Account,
       upsertHotmailAccount,
       verifyHotmailAccount,
     } = deps;
@@ -177,6 +185,13 @@
               lastUsedAt: Date.now(),
             });
             await addLog('当前 Hotmail 账号已自动标记为已用。', 'ok');
+          }
+          if (String(latestState.mailProvider || '').trim().toLowerCase() === '2925' && latestState.currentMail2925AccountId) {
+            await patchMail2925Account(latestState.currentMail2925AccountId, {
+              lastUsedAt: Date.now(),
+              lastError: '',
+            });
+            await addLog('当前 2925 账号已记录最近使用时间。', 'ok');
           }
           if (isLuckmailProvider(latestState)) {
             const currentPurchase = getCurrentLuckmailPurchase(latestState);
@@ -576,6 +591,52 @@
         case 'TEST_HOTMAIL_ACCOUNT': {
           const result = await testHotmailAccountMailAccess(String(message.payload?.accountId || ''));
           return { ok: true, ...result };
+        }
+
+        case 'UPSERT_MAIL2925_ACCOUNT': {
+          const account = await upsertMail2925Account(message.payload || {});
+          return { ok: true, account };
+        }
+
+        case 'DELETE_MAIL2925_ACCOUNT': {
+          await deleteMail2925Account(String(message.payload?.accountId || ''));
+          return { ok: true };
+        }
+
+        case 'DELETE_MAIL2925_ACCOUNTS': {
+          const result = await deleteMail2925Accounts(String(message.payload?.mode || 'all'));
+          return { ok: true, ...result };
+        }
+
+        case 'SELECT_MAIL2925_ACCOUNT': {
+          const account = await setCurrentMail2925Account(String(message.payload?.accountId || ''), {
+            updateLastUsedAt: false,
+          });
+          return { ok: true, account };
+        }
+
+        case 'PATCH_MAIL2925_ACCOUNT': {
+          const account = await patchMail2925Account(
+            String(message.payload?.accountId || ''),
+            message.payload?.updates || {}
+          );
+          return { ok: true, account };
+        }
+
+        case 'LOGIN_MAIL2925_ACCOUNT': {
+          const accountId = String(message.payload?.accountId || '');
+          const account = await setCurrentMail2925Account(accountId, {
+            updateLastUsedAt: false,
+          });
+          if (typeof deps.ensureMail2925MailboxSession !== 'function') {
+            throw new Error('2925 登录能力尚未接入。');
+          }
+          await deps.ensureMail2925MailboxSession({
+            accountId: account.id,
+            forceRelogin: Boolean(message.payload?.forceRelogin),
+            actionLabel: '侧边栏手动登录 2925 账号',
+          });
+          return { ok: true, account };
         }
 
         case 'LIST_LUCKMAIL_PURCHASES': {
