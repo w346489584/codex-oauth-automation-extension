@@ -76,3 +76,63 @@ test('generated email helper falls back to normal generator when 2925 is in rece
     ['email', 'duck@example.com'],
   ]);
 });
+
+test('generated email helper can read the requested address from custom email pool', async () => {
+  const source = fs.readFileSync('background/generated-email-helpers.js', 'utf8');
+  const globalScope = {};
+  const api = new Function('self', `${source}; return self.MultiPageGeneratedEmailHelpers;`)(globalScope);
+  const events = [];
+
+  const helpers = api.createGeneratedEmailHelpers({
+    addLog: async () => {},
+    buildGeneratedAliasEmail: () => {
+      throw new Error('should not build alias');
+    },
+    buildCloudflareTempEmailHeaders: () => ({}),
+    CLOUDFLARE_TEMP_EMAIL_GENERATOR: 'cloudflare-temp-email',
+    CUSTOM_EMAIL_POOL_GENERATOR: 'custom-pool',
+    DUCK_AUTOFILL_URL: 'https://duckduckgo.com/email',
+    fetch: async () => ({ ok: true, text: async () => '{}' }),
+    fetchIcloudHideMyEmail: async () => {
+      throw new Error('should not use icloud generator');
+    },
+    getCloudflareTempEmailAddressFromResponse: () => '',
+    getCloudflareTempEmailConfig: () => ({ baseUrl: '', adminAuth: '', domain: '' }),
+    getCustomEmailPoolEmail: (state, targetRun) => state.customEmailPool?.[targetRun - 1] || '',
+    getState: async () => ({
+      customEmailPool: ['first@example.com', 'second@example.com'],
+      emailGenerator: 'custom-pool',
+      mailProvider: 'gmail',
+    }),
+    ensureMail2925AccountForFlow: async () => {
+      throw new Error('should not allocate 2925 account');
+    },
+    joinCloudflareTempEmailUrl: () => '',
+    normalizeCloudflareDomain: () => '',
+    normalizeCloudflareTempEmailAddress: () => '',
+    normalizeEmailGenerator: (value) => String(value || '').trim().toLowerCase(),
+    isGeneratedAliasProvider: () => false,
+    reuseOrCreateTab: async () => {},
+    sendToContentScript: async () => {
+      throw new Error('should not open duck tab');
+    },
+    setEmailState: async (email) => {
+      events.push(['email', email]);
+    },
+    throwIfStopped: () => {},
+  });
+
+  const email = await helpers.fetchGeneratedEmail({
+    customEmailPool: ['first@example.com', 'second@example.com'],
+    emailGenerator: 'custom-pool',
+    mailProvider: 'gmail',
+  }, {
+    generator: 'custom-pool',
+    poolIndex: 1,
+  });
+
+  assert.equal(email, 'second@example.com');
+  assert.deepStrictEqual(events, [
+    ['email', 'second@example.com'],
+  ]);
+});

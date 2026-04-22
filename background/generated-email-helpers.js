@@ -7,11 +7,13 @@
       buildGeneratedAliasEmail,
       buildCloudflareTempEmailHeaders,
       CLOUDFLARE_TEMP_EMAIL_GENERATOR,
+      CUSTOM_EMAIL_POOL_GENERATOR,
       DUCK_AUTOFILL_URL,
       fetch,
       fetchIcloudHideMyEmail,
       getCloudflareTempEmailAddressFromResponse,
       getCloudflareTempEmailConfig,
+      getCustomEmailPoolEmail,
       getState,
       ensureMail2925AccountForFlow,
       joinCloudflareTempEmailUrl,
@@ -188,6 +190,24 @@
       return result.email;
     }
 
+    async function fetchCustomEmailPoolEmail(state, options = {}) {
+      throwIfStopped();
+      const latestState = state || await getState();
+      const requestedIndex = Math.max(0, Math.floor(Number(options.poolIndex) || 0));
+      const email = String(getCustomEmailPoolEmail?.(latestState, requestedIndex + 1) || '').trim().toLowerCase();
+      if (!email) {
+        throw new Error(
+          requestedIndex > 0
+            ? `自定义邮箱池第 ${requestedIndex + 1} 个邮箱不存在，请检查邮箱池配置。`
+            : '自定义邮箱池为空，请先至少填写 1 个邮箱。'
+        );
+      }
+
+      await setEmailState(email);
+      await addLog(`自定义邮箱池：已取用 ${email}`, 'ok');
+      return email;
+    }
+
     async function fetchManagedAliasEmail(state, options = {}) {
       throwIfStopped();
       const provider = String(options.mailProvider || state?.mailProvider || '').trim().toLowerCase();
@@ -233,12 +253,18 @@
       const mail2925Mode = options.mail2925Mode !== undefined
         ? options.mail2925Mode
         : currentState.mail2925Mode;
-      if (isGeneratedAliasProvider?.(provider, mail2925Mode)) {
-        return fetchManagedAliasEmail(currentState, options);
-      }
       const generator = normalizeEmailGenerator(options.generator ?? currentState.emailGenerator);
       if (generator === 'custom') {
         throw new Error('当前邮箱生成方式为自定义邮箱，请直接填写注册邮箱。');
+      }
+      if (generator === CUSTOM_EMAIL_POOL_GENERATOR) {
+        return fetchCustomEmailPoolEmail(currentState, options);
+      }
+      const shouldUseManagedAlias = typeof isGeneratedAliasProvider === 'function'
+        ? isGeneratedAliasProvider(currentState, mail2925Mode)
+        : false;
+      if (shouldUseManagedAlias) {
+        return fetchManagedAliasEmail(currentState, options);
       }
       if (generator === 'icloud') {
         return fetchIcloudHideMyEmail();
@@ -255,6 +281,7 @@
     return {
       ensureCloudflareTempEmailConfig,
       fetchCloudflareEmail,
+      fetchCustomEmailPoolEmail,
       fetchCloudflareTempEmailAddress,
       fetchDuckEmail,
       fetchGeneratedEmail,

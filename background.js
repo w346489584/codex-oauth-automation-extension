@@ -139,10 +139,12 @@ const ICLOUD_LOGIN_URLS = [
 ];
 const ICLOUD_PROVIDER = 'icloud';
 const GMAIL_PROVIDER = 'gmail';
+const GMAIL_ALIAS_GENERATOR = 'gmail-alias';
 const HOTMAIL_PROVIDER = 'hotmail-api';
 const LUCKMAIL_PROVIDER = 'luckmail-api';
 const CLOUDFLARE_TEMP_EMAIL_PROVIDER = 'cloudflare-temp-email';
 const CLOUDFLARE_TEMP_EMAIL_GENERATOR = 'cloudflare-temp-email';
+const CUSTOM_EMAIL_POOL_GENERATOR = 'custom-pool';
 const HOTMAIL_MAILBOXES = ['INBOX', 'Junk'];
 const STOP_ERROR_MESSAGE = '流程已被用户停止。';
 const CLOUDFLARE_SECURITY_BLOCK_ERROR_PREFIX = 'CF_SECURITY_BLOCKED::';
@@ -263,6 +265,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   mail2925Mode: DEFAULT_MAIL_2925_MODE,
   mail2925UseAccountPool: false,
   emailGenerator: 'duck',
+  customEmailPool: [],
   autoDeleteUsedIcloudAlias: false,
   icloudHostPreference: 'auto',
   accountRunHistoryTextEnabled: false,
@@ -640,8 +643,20 @@ function getAutoRunTimerStatusPayload(plan) {
 
 function normalizeEmailGenerator(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
+  const customEmailPoolGenerator = typeof CUSTOM_EMAIL_POOL_GENERATOR === 'string'
+    ? CUSTOM_EMAIL_POOL_GENERATOR
+    : 'custom-pool';
+  const gmailAliasGenerator = typeof GMAIL_ALIAS_GENERATOR === 'string'
+    ? GMAIL_ALIAS_GENERATOR
+    : 'gmail-alias';
   if (normalized === 'custom' || normalized === 'manual') {
     return 'custom';
+  }
+  if (normalized === gmailAliasGenerator) {
+    return gmailAliasGenerator;
+  }
+  if (normalized === customEmailPoolGenerator) {
+    return customEmailPoolGenerator;
   }
   if (normalized === 'icloud') {
     return 'icloud';
@@ -649,6 +664,36 @@ function normalizeEmailGenerator(value = '') {
   if (normalized === 'cloudflare') return 'cloudflare';
   if (normalized === CLOUDFLARE_TEMP_EMAIL_GENERATOR) return CLOUDFLARE_TEMP_EMAIL_GENERATOR;
   return 'duck';
+}
+
+function normalizeCustomEmailPool(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[\r\n,，;；]+/);
+
+  return source
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item));
+}
+
+function isCustomEmailPoolGenerator(stateOrValue = {}) {
+  const generator = typeof stateOrValue === 'string'
+    ? stateOrValue
+    : stateOrValue?.emailGenerator;
+  const customEmailPoolGenerator = typeof CUSTOM_EMAIL_POOL_GENERATOR === 'string'
+    ? CUSTOM_EMAIL_POOL_GENERATOR
+    : 'custom-pool';
+  return normalizeEmailGenerator(generator) === customEmailPoolGenerator;
+}
+
+function getCustomEmailPool(state = {}) {
+  return normalizeCustomEmailPool(state?.customEmailPool);
+}
+
+function getCustomEmailPoolEmailForRun(state = {}, targetRun = 1) {
+  const entries = getCustomEmailPool(state);
+  const numericRun = Math.max(1, Math.floor(Number(targetRun) || 1));
+  return entries[numericRun - 1] || '';
 }
 
 function normalizePanelMode(value = '') {
@@ -894,6 +939,8 @@ function normalizePersistentSettingValue(key, value) {
       return Boolean(value);
     case 'emailGenerator':
       return normalizeEmailGenerator(value);
+    case 'customEmailPool':
+      return normalizeCustomEmailPool(value);
     case 'autoDeleteUsedIcloudAlias':
     case 'accountRunHistoryTextEnabled':
       return Boolean(value);
@@ -2130,6 +2177,18 @@ function parseGmailBaseEmail(rawValue) {
 }
 
 function isGeneratedAliasProvider(stateOrProvider, mail2925Mode = undefined) {
+  if (
+    stateOrProvider
+    && typeof stateOrProvider === 'object'
+    && !Array.isArray(stateOrProvider)
+    && normalizeEmailGenerator(stateOrProvider.emailGenerator) === (
+      typeof CUSTOM_EMAIL_POOL_GENERATOR === 'string'
+        ? CUSTOM_EMAIL_POOL_GENERATOR
+        : 'custom-pool'
+    )
+  ) {
+    return false;
+  }
   const provider = typeof stateOrProvider === 'string'
     ? stateOrProvider
     : stateOrProvider?.mailProvider;
@@ -2287,6 +2346,18 @@ function getManagedAliasBaseEmail(state = {}, provider = state?.mailProvider) {
 }
 
 function isGeneratedAliasProvider(stateOrProvider, mail2925Mode = undefined) {
+  if (
+    stateOrProvider
+    && typeof stateOrProvider === 'object'
+    && !Array.isArray(stateOrProvider)
+    && normalizeEmailGenerator(stateOrProvider.emailGenerator) === (
+      typeof CUSTOM_EMAIL_POOL_GENERATOR === 'string'
+        ? CUSTOM_EMAIL_POOL_GENERATOR
+        : 'custom-pool'
+    )
+  ) {
+    return false;
+  }
   const provider = typeof stateOrProvider === 'string'
     ? stateOrProvider
     : stateOrProvider?.mailProvider;
@@ -4999,7 +5070,12 @@ async function handleStepData(step, payload) {
         });
       }
       await finalizeIcloudAliasAfterSuccessfulFlow(latestState);
-      if (shouldUseCustomRegistrationEmail(latestState) && latestState.email) {
+      const shouldClearCustomPoolEmail = String(latestState?.emailGenerator || '').trim().toLowerCase() === (
+        typeof CUSTOM_EMAIL_POOL_GENERATOR === 'string'
+          ? CUSTOM_EMAIL_POOL_GENERATOR
+          : 'custom-pool'
+      );
+      if ((shouldUseCustomRegistrationEmail(latestState) || shouldClearCustomPoolEmail) && latestState.email) {
         await setEmailStateSilently(null);
       }
       break;
@@ -5413,8 +5489,20 @@ async function executeStepAndWait(step, delayAfter = 2000) {
 }
 
 function getEmailGeneratorLabel(generator) {
+  const customEmailPoolGenerator = typeof CUSTOM_EMAIL_POOL_GENERATOR === 'string'
+    ? CUSTOM_EMAIL_POOL_GENERATOR
+    : 'custom-pool';
+  const gmailAliasGenerator = typeof GMAIL_ALIAS_GENERATOR === 'string'
+    ? GMAIL_ALIAS_GENERATOR
+    : 'gmail-alias';
   if (generator === 'custom') {
     return '自定义邮箱';
+  }
+  if (generator === gmailAliasGenerator) {
+    return 'Gmail +tag 邮箱';
+  }
+  if (generator === customEmailPoolGenerator) {
+    return '自定义邮箱池';
   }
   if (generator === 'icloud') {
     return 'iCloud 隐私邮箱';
@@ -5515,11 +5603,13 @@ const generatedEmailHelpers = self.MultiPageGeneratedEmailHelpers?.createGenerat
   buildGeneratedAliasEmail,
   buildCloudflareTempEmailHeaders,
   CLOUDFLARE_TEMP_EMAIL_GENERATOR,
+  CUSTOM_EMAIL_POOL_GENERATOR,
   DUCK_AUTOFILL_URL,
   fetch,
   fetchIcloudHideMyEmail,
   getCloudflareTempEmailAddressFromResponse,
   getCloudflareTempEmailConfig,
+  getCustomEmailPoolEmail: getCustomEmailPoolEmailForRun,
   getState,
   ensureMail2925AccountForFlow,
   joinCloudflareTempEmailUrl,
@@ -5762,6 +5852,21 @@ async function ensureAutoEmailReady(targetRun, totalRuns, attemptRuns) {
     return currentState.email;
   }
 
+  if (isCustomEmailPoolGenerator(currentState)) {
+    const queuedEmail = getCustomEmailPoolEmailForRun(currentState, targetRun);
+    if (!queuedEmail) {
+      const poolSize = getCustomEmailPool(currentState).length;
+      throw new Error(
+        poolSize > 0
+          ? `自定义邮箱池第 ${targetRun} 个邮箱不存在，请检查邮箱池数量是否与自动轮数一致。`
+          : '自定义邮箱池为空，请先至少填写 1 个邮箱。'
+      );
+    }
+    await setEmailState(queuedEmail);
+    await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：自定义邮箱池已就绪：${queuedEmail}（第 ${attemptRuns} 次尝试）===`, 'ok');
+    return queuedEmail;
+  }
+
   if (shouldUseCustomRegistrationEmail(currentState)) {
     await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮已暂停：请先填写自定义注册邮箱，然后继续 ===`, 'warn');
     await broadcastAutoRunStatus('waiting_email', {
@@ -5878,6 +5983,21 @@ async function ensureAutoEmailReady(targetRun, totalRuns, attemptRuns) {
 
   if (currentState.email) {
     return currentState.email;
+  }
+
+  if (isCustomEmailPoolGenerator(currentState)) {
+    const queuedEmail = getCustomEmailPoolEmailForRun(currentState, targetRun);
+    if (!queuedEmail) {
+      const poolSize = getCustomEmailPool(currentState).length;
+      throw new Error(
+        poolSize > 0
+          ? `自定义邮箱池第 ${targetRun} 个邮箱不存在，请检查邮箱池数量是否与自动轮数一致。`
+          : '自定义邮箱池为空，请先至少填写 1 个邮箱。'
+      );
+    }
+    await setEmailState(queuedEmail);
+    await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：自定义邮箱池已就绪：${queuedEmail}（第 ${attemptRuns} 次尝试）===`, 'ok');
+    return queuedEmail;
   }
 
   if (shouldUseCustomRegistrationEmail(currentState)) {

@@ -102,6 +102,8 @@ const rowMail2925PoolSettings = document.getElementById('row-mail2925-pool-setti
 const mail2925ModeButtons = Array.from(document.querySelectorAll('[data-mail2925-mode]'));
 const rowEmailGenerator = document.getElementById('row-email-generator');
 const selectEmailGenerator = document.getElementById('select-email-generator');
+const rowCustomEmailPool = document.getElementById('row-custom-email-pool');
+const inputCustomEmailPool = document.getElementById('input-custom-email-pool');
 const rowTempEmailBaseUrl = document.getElementById('row-temp-email-base-url');
 const inputTempEmailBaseUrl = document.getElementById('input-temp-email-base-url');
 const rowTempEmailAdminAuth = document.getElementById('row-temp-email-admin-auth');
@@ -254,7 +256,9 @@ const HOTMAIL_SERVICE_MODE_REMOTE = 'remote';
 const HOTMAIL_SERVICE_MODE_LOCAL = 'local';
 const ICLOUD_PROVIDER = 'icloud';
 const GMAIL_PROVIDER = 'gmail';
+const GMAIL_ALIAS_GENERATOR = 'gmail-alias';
 const LUCKMAIL_PROVIDER = 'luckmail-api';
+const CUSTOM_EMAIL_POOL_GENERATOR = 'custom-pool';
 const DEFAULT_LUCKMAIL_BASE_URL = 'https://mails.luckyous.com';
 const DEFAULT_LUCKMAIL_EMAIL_TYPE = 'ms_graph';
 const DISPLAY_TIMEZONE = 'Asia/Shanghai';
@@ -463,14 +467,14 @@ function getCurrentRegistrationEmailUiCopy() {
   if (isCustomMailProvider()) {
     return getCustomMailProviderUiCopy();
   }
-  if (isManagedAliasProvider()) {
+  if (usesGeneratedAliasMailProvider()) {
     return getManagedAliasProviderUiCopy();
   }
   return getEmailGeneratorUiCopy();
 }
 
 function isCurrentRegistrationEmailCompatible(email = inputEmail.value.trim(), provider = selectMailProvider.value, state = latestState) {
-  if (!isManagedAliasProvider(provider) || !email) {
+  if (!usesGeneratedAliasMailProvider(provider, getSelectedMail2925Mode()) || !email) {
     return true;
   }
   const baseEmail = getManagedAliasBaseEmailForProvider(provider, state);
@@ -606,8 +610,19 @@ const LOG_LEVEL_LABELS = {
   error: '错误',
 };
 
-function usesGeneratedAliasMailProvider(provider, mail2925Mode = getSelectedMail2925Mode()) {
-  return isManagedAliasProvider(provider, mail2925Mode);
+function usesGeneratedAliasMailProvider(
+  provider,
+  mail2925Mode = getSelectedMail2925Mode(),
+  generator = undefined
+) {
+  const customEmailPoolGenerator = typeof CUSTOM_EMAIL_POOL_GENERATOR === 'string'
+    ? CUSTOM_EMAIL_POOL_GENERATOR
+    : 'custom-pool';
+  const resolvedGenerator = generator !== undefined
+    ? generator
+    : (typeof getSelectedEmailGenerator === 'function' ? getSelectedEmailGenerator() : '');
+  return resolvedGenerator !== customEmailPoolGenerator
+    && isManagedAliasProvider(provider, mail2925Mode);
 }
 
 function parseGmailBaseEmail(rawValue = '') {
@@ -1173,7 +1188,37 @@ function formatAutoStepDelayInputValue(value) {
   return normalized === null ? '' : String(normalized);
 }
 
+function normalizeCustomEmailPoolEntries(value = '') {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[\r\n,，;；]+/);
+
+  return source
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item));
+}
+
+function usesCustomEmailPoolGenerator(provider = selectMailProvider.value) {
+  return !isCustomMailProvider(provider)
+    && !isLuckmailProvider(provider)
+    && getSelectedEmailGenerator() === CUSTOM_EMAIL_POOL_GENERATOR;
+}
+
+function getCustomEmailPoolSize() {
+  return normalizeCustomEmailPoolEntries(inputCustomEmailPool?.value).length;
+}
+
+function syncRunCountFromCustomEmailPool() {
+  if (!usesCustomEmailPoolGenerator()) {
+    return;
+  }
+  inputRunCount.value = String(getCustomEmailPoolSize());
+}
+
 function getRunCountValue() {
+  if (typeof usesCustomEmailPoolGenerator === 'function' && usesCustomEmailPoolGenerator()) {
+    return getCustomEmailPoolSize();
+  }
   return Math.max(1, parseInt(inputRunCount.value, 10) || 1);
 }
 
@@ -1486,6 +1531,9 @@ function collectSettingsPayload() {
     mail2925Mode: getSelectedMail2925Mode(),
     mail2925UseAccountPool,
     emailGenerator: selectEmailGenerator.value,
+    customEmailPool: typeof normalizeCustomEmailPoolEntries === 'function'
+      ? normalizeCustomEmailPoolEntries(inputCustomEmailPool?.value)
+      : [],
     autoDeleteUsedIcloudAlias: checkboxAutoDeleteIcloud?.checked,
     icloudHostPreference: selectIcloudHostPreference?.value || 'auto',
     ...(contributionModeEnabled ? {} : {
@@ -1738,10 +1786,11 @@ function applyAutoRunStatus(payload = currentAutoRun) {
 
   setSettingsCardLocked(settingsCardLocked);
 
-  inputRunCount.disabled = currentAutoRun.autoRunning;
+  inputRunCount.disabled = currentAutoRun.autoRunning || usesCustomEmailPoolGenerator();
   btnAutoRun.disabled = currentAutoRun.autoRunning;
   btnFetchEmail.disabled = locked
-    || isCustomMailProvider();
+    || isCustomMailProvider()
+    || usesCustomEmailPoolGenerator();
   inputEmail.disabled = locked;
   inputAutoSkipFailures.disabled = scheduled;
 
@@ -1779,7 +1828,7 @@ function applyAutoRunStatus(payload = currentAutoRun) {
       setDefaultAutoRunButton();
       inputEmail.disabled = false;
       if (!locked) {
-        btnFetchEmail.disabled = isCustomMailProvider();
+        btnFetchEmail.disabled = isCustomMailProvider() || usesCustomEmailPoolGenerator();
       }
       break;
   }
@@ -1869,7 +1918,13 @@ function applySettingsState(state) {
   setMail2925Mode(state?.mail2925Mode);
   {
     const restoredEmailGenerator = String(state?.emailGenerator || '').trim().toLowerCase();
-    if (restoredEmailGenerator === 'icloud') {
+    if (restoredMailProvider === GMAIL_PROVIDER) {
+      selectEmailGenerator.value = restoredEmailGenerator === CUSTOM_EMAIL_POOL_GENERATOR
+        ? CUSTOM_EMAIL_POOL_GENERATOR
+        : GMAIL_ALIAS_GENERATOR;
+    } else if (restoredEmailGenerator === CUSTOM_EMAIL_POOL_GENERATOR) {
+      selectEmailGenerator.value = CUSTOM_EMAIL_POOL_GENERATOR;
+    } else if (restoredEmailGenerator === 'icloud') {
       selectEmailGenerator.value = 'icloud';
     } else if (restoredEmailGenerator === 'cloudflare') {
       selectEmailGenerator.value = 'cloudflare';
@@ -1905,6 +1960,9 @@ function applySettingsState(state) {
   setManagedAliasBaseEmailInputForProvider(restoredMailProvider, state);
   inputInbucketHost.value = state?.inbucketHost || '';
   inputInbucketMailbox.value = state?.inbucketMailbox || '';
+  if (inputCustomEmailPool) {
+    inputCustomEmailPool.value = normalizeCustomEmailPoolEntries(state?.customEmailPool).join('\n');
+  }
   setHotmailServiceMode(state?.hotmailServiceMode);
   inputHotmailRemoteBaseUrl.value = state?.hotmailRemoteBaseUrl || '';
   inputHotmailLocalBaseUrl.value = state?.hotmailLocalBaseUrl || '';
@@ -2390,6 +2448,12 @@ function getSelectedEmailGenerator() {
   if (generator === 'custom' || generator === 'manual') {
     return 'custom';
   }
+  if (generator === GMAIL_ALIAS_GENERATOR) {
+    return GMAIL_ALIAS_GENERATOR;
+  }
+  if (generator === CUSTOM_EMAIL_POOL_GENERATOR) {
+    return CUSTOM_EMAIL_POOL_GENERATOR;
+  }
   if (generator === 'icloud') {
     return 'icloud';
   }
@@ -2401,6 +2465,22 @@ function getSelectedEmailGenerator() {
 function getEmailGeneratorUiCopy() {
   if (getSelectedEmailGenerator() === 'custom') {
     return getCustomMailProviderUiCopy();
+  }
+  if (getSelectedEmailGenerator() === GMAIL_ALIAS_GENERATOR) {
+    return {
+      buttonLabel: '生成',
+      placeholder: '步骤 3 自动生成 Gmail +tag 邮箱并回填',
+      successVerb: '生成',
+      label: 'Gmail +tag 邮箱',
+    };
+  }
+  if (getSelectedEmailGenerator() === CUSTOM_EMAIL_POOL_GENERATOR) {
+    return {
+      buttonLabel: '取下一个',
+      placeholder: '按邮箱池顺序自动回填，也可以手动粘贴当前轮邮箱',
+      successVerb: '取用',
+      label: '自定义邮箱池',
+    };
   }
   if (getSelectedEmailGenerator() === 'icloud') {
     return {
@@ -2642,13 +2722,29 @@ function updateMailProviderUI() {
   const useMail2925 = selectMailProvider.value === '2925';
   const useMail2925AccountPool = useMail2925 && Boolean(inputMail2925UseAccountPool?.checked);
   const mail2925Mode = getSelectedMail2925Mode();
-  const useGeneratedAlias = usesGeneratedAliasMailProvider(selectMailProvider.value, mail2925Mode);
+  const gmailOnlyGenerators = new Set([GMAIL_ALIAS_GENERATOR, CUSTOM_EMAIL_POOL_GENERATOR]);
+  Array.from(selectEmailGenerator?.options || []).forEach((option) => {
+    if (!option) return;
+    if (useGmail) {
+      option.hidden = !gmailOnlyGenerators.has(String(option.value || '').trim().toLowerCase());
+      return;
+    }
+    option.hidden = String(option.value || '').trim().toLowerCase() === GMAIL_ALIAS_GENERATOR;
+  });
+  if (useGmail && !gmailOnlyGenerators.has(String(selectEmailGenerator.value || '').trim().toLowerCase())) {
+    selectEmailGenerator.value = GMAIL_ALIAS_GENERATOR;
+  }
+  if (!useGmail && String(selectEmailGenerator.value || '').trim().toLowerCase() === GMAIL_ALIAS_GENERATOR) {
+    selectEmailGenerator.value = 'duck';
+  }
+  const selectedGenerator = getSelectedEmailGenerator();
+  const useGeneratedAlias = usesGeneratedAliasMailProvider(selectMailProvider.value, mail2925Mode, selectedGenerator);
   const useInbucket = selectMailProvider.value === 'inbucket';
   const useHotmail = selectMailProvider.value === 'hotmail-api';
   const useLuckmail = isLuckmailProvider();
   const useCustomEmail = isCustomMailProvider();
   const useIcloudProvider = isIcloudMailProvider();
-  const useEmailGenerator = !useHotmail && !useLuckmail && !useGeneratedAlias && !useCustomEmail;
+  const useEmailGenerator = !useHotmail && !useLuckmail && !useCustomEmail && (!useGeneratedAlias || useGmail);
   const useCloudflareTempEmailProvider = selectMailProvider.value === 'cloudflare-temp-email';
   const aliasUiCopy = useGeneratedAlias
     ? getManagedAliasProviderUiCopy(selectMailProvider.value, mail2925Mode)
@@ -2665,7 +2761,7 @@ function updateMailProviderUI() {
   const hotmailServiceMode = getSelectedHotmailServiceMode();
   rowInbucketHost.style.display = useInbucket ? '' : 'none';
   rowInbucketMailbox.style.display = useInbucket ? '' : 'none';
-  const selectedGenerator = getSelectedEmailGenerator();
+  const useCustomEmailPool = useEmailGenerator && selectedGenerator === CUSTOM_EMAIL_POOL_GENERATOR;
   const useCloudflare = selectedGenerator === 'cloudflare';
   const useIcloud = selectedGenerator === 'icloud';
   const useCloudflareTempEmailGenerator = selectedGenerator === 'cloudflare-temp-email';
@@ -2675,6 +2771,9 @@ function updateMailProviderUI() {
   const showCloudflareTempEmailDomain = useEmailGenerator && useCloudflareTempEmailGenerator;
   if (rowEmailGenerator) {
     rowEmailGenerator.style.display = useEmailGenerator ? '' : 'none';
+  }
+  if (rowCustomEmailPool) {
+    rowCustomEmailPool.style.display = useCustomEmailPool ? '' : 'none';
   }
   if (icloudSection) {
     const showIcloudSection = (useEmailGenerator && useIcloud) || useIcloudProvider;
@@ -2726,7 +2825,7 @@ function updateMailProviderUI() {
   }
   inputEmailPrefix.style.display = '';
   inputEmailPrefix.readOnly = false;
-  selectEmailGenerator.disabled = useHotmail || useLuckmail || useGeneratedAlias || useCustomEmail;
+  selectEmailGenerator.disabled = useHotmail || useLuckmail || useCustomEmail || (useGeneratedAlias && !useGmail);
   if (useGmail) {
     labelEmailPrefix.textContent = 'Gmail 原邮箱';
     inputEmailPrefix.placeholder = '例如 yourname@gmail.com';
@@ -2742,7 +2841,7 @@ function updateMailProviderUI() {
   if (rowHotmailLocalBaseUrl) {
     rowHotmailLocalBaseUrl.style.display = useHotmail && hotmailServiceMode === HOTMAIL_SERVICE_MODE_LOCAL ? '' : 'none';
   }
-  btnFetchEmail.hidden = useHotmail || useLuckmail || useCustomEmail;
+  btnFetchEmail.hidden = useHotmail || useLuckmail || useCustomEmail || useCustomEmailPool;
   inputEmail.readOnly = useHotmail || useLuckmail;
   inputEmail.placeholder = useHotmail
     ? '由 Hotmail 账号池自动分配'
@@ -2755,7 +2854,7 @@ function updateMailProviderUI() {
   if (!useHotmail && !useLuckmail) {
     inputEmail.placeholder = uiCopy.placeholder;
   }
-  btnFetchEmail.disabled = useLuckmail || useCustomEmail || isAutoRunLockedPhase();
+  btnFetchEmail.disabled = useLuckmail || useCustomEmail || useCustomEmailPool || isAutoRunLockedPhase();
   if (!btnFetchEmail.disabled) {
     btnFetchEmail.textContent = uiCopy.buttonLabel;
   }
@@ -2768,20 +2867,25 @@ function updateMailProviderUI() {
         ? '步骤 3 会自动生成邮箱，无需手动获取'
         : (useCustomEmail ? '请先填写自定义注册邮箱，成功一轮后会自动清空' : `先自动获取${uiCopy.label}，或手动粘贴邮箱后再继续`)));
   }
+  if (autoHintText && useCustomEmailPool) {
+    autoHintText.textContent = getCustomEmailPoolSize() > 0
+      ? `当前邮箱池共 ${getCustomEmailPoolSize()} 个邮箱，自动轮数会跟随数量；实际收码仍走当前邮箱服务`
+      : '请先在邮箱池里每行填写一个邮箱，自动轮数会跟随数量';
+  }
   if (autoHintText && useGmail && useGeneratedAlias) {
     autoHintText.textContent = '请先填写 Gmail 原邮箱，步骤 3 会自动生成 Gmail +tag 地址';
   }
   if (autoHintText && useGeneratedAlias && aliasUiCopy?.hint) {
     autoHintText.textContent = aliasUiCopy.hint;
   }
-  if (autoHintText && useMail2925AccountPool) {
+  if (autoHintText && useMail2925AccountPool && !useCustomEmailPool) {
     autoHintText.textContent = getMail2925Accounts().length
       ? (useGeneratedAlias
         ? '当前已启用 2925 号池模式，步骤 3 会基于下拉框选中的号池邮箱生成别名地址'
         : '当前已启用 2925 号池模式，步骤 4 / 8 遇到登录页时会优先使用下拉框选中的账号自动登录')
       : '当前已启用 2925 号池模式，请先在下方 2925 账号池中添加账号并选择邮箱';
   }
-  if (autoHintText && showCloudflareTempEmailReceiveMailbox) {
+  if (autoHintText && showCloudflareTempEmailReceiveMailbox && !useCustomEmailPool) {
     autoHintText.textContent = '若注册邮箱会转发到 Cloudflare Temp Email，请在“邮件接收”中填写实际接收转发邮件的邮箱。';
   }
   if (useHotmail) {
@@ -2789,6 +2893,10 @@ function updateMailProviderUI() {
   } else if (useLuckmail) {
     inputEmail.value = getCurrentLuckmailEmail();
   }
+  if (useCustomEmailPool) {
+    syncRunCountFromCustomEmailPool();
+  }
+  inputRunCount.disabled = currentAutoRun.autoRunning || useCustomEmailPool;
   renderHotmailAccounts();
   if (useMail2925) {
     renderMail2925Accounts();
@@ -3826,7 +3934,22 @@ async function startAutoRunFromCurrentSettings() {
     console.warn('Failed to refresh contribution content hint before auto run:', error);
   }
 
-  const totalRuns = getRunCountValue();
+  if (typeof settingsDirty !== 'undefined' && settingsDirty && typeof saveSettings === 'function') {
+    await saveSettings({ silent: true });
+  }
+
+  const customEmailPoolEnabled = typeof usesCustomEmailPoolGenerator === 'function'
+    && usesCustomEmailPoolGenerator();
+  const customEmailPoolSize = customEmailPoolEnabled && typeof getCustomEmailPoolSize === 'function'
+    ? getCustomEmailPoolSize()
+    : 0;
+  if (customEmailPoolEnabled && customEmailPoolSize <= 0) {
+    throw new Error('请先在邮箱池里至少填写 1 个邮箱。');
+  }
+  const totalRuns = customEmailPoolEnabled ? customEmailPoolSize : getRunCountValue();
+  if (customEmailPoolEnabled) {
+    inputRunCount.value = String(customEmailPoolSize);
+  }
   let mode = 'restart';
   const autoRunSkipFailures = inputAutoSkipFailures.checked;
   const contributionNickname = String(inputContributionNickname?.value || '').trim();
@@ -4282,6 +4405,19 @@ inputEmailPrefix.addEventListener('blur', () => {
   saveSettings({ silent: true }).catch(() => {});
 });
 
+inputCustomEmailPool?.addEventListener('input', () => {
+  syncRunCountFromCustomEmailPool();
+  updateMailProviderUI();
+  markSettingsDirty(true);
+  scheduleSettingsAutoSave();
+});
+inputCustomEmailPool?.addEventListener('blur', () => {
+  inputCustomEmailPool.value = normalizeCustomEmailPoolEntries(inputCustomEmailPool.value).join('\n');
+  syncRunCountFromCustomEmailPool();
+  updateMailProviderUI();
+  saveSettings({ silent: true }).catch(() => {});
+});
+
 selectMail2925PoolAccount?.addEventListener('change', async () => {
   try {
     await syncSelectedMail2925PoolAccount();
@@ -4332,6 +4468,11 @@ inputRunCount.addEventListener('input', () => {
   updateFallbackThreadIntervalInputState();
 });
 inputRunCount.addEventListener('blur', () => {
+  if (usesCustomEmailPoolGenerator()) {
+    syncRunCountFromCustomEmailPool();
+    updateFallbackThreadIntervalInputState();
+    return;
+  }
   inputRunCount.value = String(getRunCountValue());
   updateFallbackThreadIntervalInputState();
 });
