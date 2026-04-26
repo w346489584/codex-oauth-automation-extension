@@ -5,6 +5,7 @@
     AU: ['au', 'aus', 'australia', '澳大利亚'],
     DE: ['de', 'deu', 'germany', 'deutschland', '德国'],
     FR: ['fr', 'fra', 'france', '法国'],
+    JP: ['jp', 'jpn', 'japan', '日本', '日本国'],
     US: ['us', 'usa', 'united states', 'united states of america', 'america', '美国'],
   };
 
@@ -72,6 +73,28 @@
           city: 'Lyon',
           region: 'Auvergne-Rhone-Alpes',
           postalCode: '69002',
+        },
+      },
+    ],
+    JP: [
+      {
+        query: 'Tokyo Marunouchi',
+        suggestionIndex: 1,
+        fallback: {
+          address1: 'Marunouchi 1-1',
+          city: 'Chiyoda-ku',
+          region: 'Tokyo',
+          postalCode: '100-0005',
+        },
+      },
+      {
+        query: 'Osaka Umeda',
+        suggestionIndex: 1,
+        fallback: {
+          address1: 'Umeda 3-1',
+          city: 'Kita-ku',
+          region: 'Osaka',
+          postalCode: '530-0001',
         },
       },
     ],

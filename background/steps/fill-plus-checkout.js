@@ -12,6 +12,7 @@
     FR: '/fr-address',
     US: '/',
   };
+  const MEIGUODIZHI_SUPPORTED_COUNTRIES = new Set(Object.keys(MEIGUODIZHI_PATH_BY_COUNTRY));
 
   function createPlusCheckoutBillingExecutor(deps = {}) {
     const {
@@ -73,6 +74,9 @@
 
     async function fetchMeiguodizhiAddressSeed(countryCode, fallbackSeed) {
       if (typeof fetchImpl !== 'function') {
+        return null;
+      }
+      if (!MEIGUODIZHI_SUPPORTED_COUNTRIES.has(countryCode)) {
         return null;
       }
       const path = MEIGUODIZHI_PATH_BY_COUNTRY[countryCode] || MEIGUODIZHI_PATH_BY_COUNTRY.DE;

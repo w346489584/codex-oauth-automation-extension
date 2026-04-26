@@ -9,6 +9,7 @@ test('address sources normalize supported countries and return local seeds', () 
 
   assert.equal(api.normalizeCountryCode('Deutschland'), 'DE');
   assert.equal(api.normalizeCountryCode('澳大利亚'), 'AU');
+  assert.equal(api.normalizeCountryCode('日本'), 'JP');
   assert.equal(api.normalizeCountryCode('unknown'), '');
 
   const deSeed = api.getAddressSeedForCountry('DE');
@@ -20,4 +21,8 @@ test('address sources normalize supported countries and return local seeds', () 
   const fallbackSeed = api.getAddressSeedForCountry('unknown', { fallbackCountry: 'AU' });
   assert.equal(fallbackSeed.countryCode, 'AU');
   assert.equal(fallbackSeed.fallback.region, 'New South Wales');
+
+  const jpSeed = api.getAddressSeedForCountry('日本');
+  assert.equal(jpSeed.countryCode, 'JP');
+  assert.equal(jpSeed.fallback.region, 'Tokyo');
 });

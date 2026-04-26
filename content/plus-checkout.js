@@ -503,6 +503,10 @@ function readCountryText() {
     const option = countrySelect.selectedOptions?.[0];
     return option?.textContent || countrySelect.value || '';
   }
+  const countryDropdown = findCountryDropdown();
+  if (countryDropdown) {
+    return getCountryDropdownValue(countryDropdown);
+  }
   return '';
 }
 
@@ -664,14 +668,16 @@ function getRegionCandidates(value) {
     tas: 'Tasmania',
     vic: 'Victoria',
     wa: 'Western Australia',
+    tokyo: '東京都',
+    osaka: '大阪府',
   };
-  const compact = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const compact = raw.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
   const candidates = [raw];
   if (aliases[compact]) {
     candidates.push(aliases[compact]);
   }
   for (const [abbr, name] of Object.entries(aliases)) {
-    const compactName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const compactName = name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
     if (compact === compactName) {
       candidates.push(abbr.toUpperCase());
     }
@@ -679,13 +685,73 @@ function getRegionCandidates(value) {
   return Array.from(new Set(candidates.filter(Boolean)));
 }
 
+function getCountryCandidates(value = '') {
+  const raw = normalizeText(value);
+  const compact = raw.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+  const aliases = {
+    AU: ['Australia', '澳大利亚'],
+    DE: ['Germany', 'Deutschland', '德国'],
+    FR: ['France', '法国'],
+    JP: ['Japan', '日本', '日本国'],
+    US: ['United States', 'United States of America', 'USA', '美国'],
+  };
+  const direct = aliases[String(raw || '').trim().toUpperCase()] || [];
+  const matched = Object.entries(aliases).find(([code, names]) => {
+    if (String(code).toLowerCase() === compact) return true;
+    return names.some((name) => {
+      const normalizedName = normalizeText(name).toLowerCase();
+      const compactName = normalizedName.replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+      return compact === compactName || normalizedName === raw.toLowerCase();
+    });
+  });
+  return Array.from(new Set([raw, ...direct, ...(matched ? matched[1] : [])].filter(Boolean)));
+}
+
+function matchesCountryOption(text, desiredValue) {
+  const normalizedText = normalizeText(text).toLowerCase();
+  const compactText = normalizedText.replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+  if (!compactText) return false;
+  return getCountryCandidates(desiredValue).some((candidate) => {
+    const normalizedCandidate = normalizeText(candidate).toLowerCase();
+    const compactCandidate = normalizedCandidate.replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+    if (!compactCandidate) return false;
+    return normalizedText === normalizedCandidate
+      || compactText === compactCandidate
+      || (compactCandidate.length > 3 && compactText.includes(compactCandidate));
+  });
+}
+
+function findCountryDropdown() {
+  const controls = getVisibleControls('select, button, [role="button"], [role="combobox"], [aria-haspopup="listbox"]');
+  return controls.find((control) => {
+    if (!isEnabledControl(control) || isDocumentLevelContainer(control)) return false;
+    const text = getFieldText(control);
+    return /country/i.test(text) || /\u56fd\u5bb6|\u56fd\u5bb6\u6216\u5730\u533a/.test(text);
+  }) || null;
+}
+
+function getCountryDropdownValue(control) {
+  if (!control) return '';
+  if (String(control.tagName || '').toUpperCase() === 'SELECT') {
+    const selected = control.selectedOptions?.[0];
+    return normalizeText(selected?.textContent || control.value || '');
+  }
+  return normalizeText(
+    control.getAttribute?.('aria-valuetext')
+    || control.getAttribute?.('aria-label')
+    || control.getAttribute?.('data-value')
+    || control.textContent
+    || ''
+  );
+}
+
 function matchesRegionOption(text, desiredValue) {
   const normalizedText = normalizeText(text).toLowerCase();
-  const compactText = normalizedText.replace(/[^a-z0-9]/g, '');
+  const compactText = normalizedText.replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
   if (!compactText) return false;
   return getRegionCandidates(desiredValue).some((candidate) => {
     const normalizedCandidate = normalizeText(candidate).toLowerCase();
-    const compactCandidate = normalizedCandidate.replace(/[^a-z0-9]/g, '');
+    const compactCandidate = normalizedCandidate.replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
     if (!compactCandidate) return false;
     return normalizedText === normalizedCandidate
       || compactText === compactCandidate
@@ -701,7 +767,7 @@ function findRegionDropdown() {
     if (/country/i.test(text) || /\u56fd\u5bb6|\u5730\u533a/.test(text)) return false;
     return /state|province|county/i.test(text)
       || /(?:^|\s)region(?:\s|$)/i.test(text)
-      || /\u5dde|\u7701/.test(text);
+      || /\u5dde|\u7701|\u8f96\u533a|\u90fd\u9053\u5e9c\u53bf/.test(text);
   }) || null;
 }
 
@@ -786,6 +852,53 @@ async function selectRegionDropdown(regionDropdown, value) {
   return true;
 }
 
+async function selectCountryDropdown(countryDropdown, value) {
+  if (!countryDropdown || !value) return false;
+  if (matchesCountryOption(getCountryDropdownValue(countryDropdown), value)) {
+    return false;
+  }
+
+  if (String(countryDropdown.tagName || '').toUpperCase() === 'SELECT') {
+    const option = Array.from(countryDropdown.options || []).find((item) => (
+      matchesCountryOption(item.textContent || '', value)
+      || matchesCountryOption(item.value || '', value)
+    ));
+    if (!option) {
+      throw new Error(`Plus Checkout: country dropdown option "${value}" was not found.`);
+    }
+    countryDropdown.value = option.value;
+    option.selected = true;
+    countryDropdown.dispatchEvent(new Event('input', { bubbles: true }));
+    countryDropdown.dispatchEvent(new Event('change', { bubbles: true }));
+    await sleep(500);
+    return true;
+  }
+
+  simulateClick(countryDropdown);
+  await sleep(250);
+  const startedAt = Date.now();
+  let option = null;
+  while (Date.now() - startedAt < 2500) {
+    throwIfStopped();
+    option = getVisibleRegionOptions().find((item) => (
+      matchesCountryOption(getActionText(item) || item.textContent || '', value)
+    ));
+    if (option) break;
+    await sleep(100);
+  }
+  if (!option) {
+    const visibleOptions = getVisibleRegionOptions()
+      .map((item) => normalizeText(getActionText(item) || item.textContent || ''))
+      .filter(Boolean)
+      .slice(0, 12)
+      .join(' | ');
+    throw new Error(`Plus Checkout: country dropdown option "${value}" was not found. Visible options: ${visibleOptions || 'none'}.`);
+  }
+  simulateClick(option);
+  await sleep(700);
+  return true;
+}
+
 function getStructuredAddressFields() {
   const address1 = findInputByFieldText([
     /address\s*(?:line)?\s*1|street/i,
@@ -810,15 +923,31 @@ function getStructuredAddressFields() {
   return { address1, address2, city, region, postalCode };
 }
 
-function fillIfEmpty(input, value) {
+function fillIfEmpty(input, value, options = {}) {
   if (!input || !value) return false;
-  if (String(input.value || '').trim()) return false;
+  if (!options.overwrite && String(input.value || '').trim()) return false;
+  if (options.overwrite && String(input.value || '').trim() === String(value || '').trim()) return false;
   fillInput(input, value);
   return true;
 }
 
-async function ensureStructuredAddress(seed) {
+function isDropdownStructuredAddressForm(fields = getStructuredAddressFields()) {
+  return Boolean(
+    findCountryDropdown()
+    && findRegionDropdown()
+    && fields.address1
+    && fields.city
+    && fields.postalCode
+  );
+}
+
+async function ensureStructuredAddress(seed, options = {}) {
   const fallback = seed?.fallback || {};
+  const overwrite = Boolean(options.overwrite);
+  const countryDropdown = findCountryDropdown();
+  if (countryDropdown && seed?.countryCode) {
+    await selectCountryDropdown(countryDropdown, seed.countryCode);
+  }
   const fields = await waitUntil(() => {
     const currentFields = getStructuredAddressFields();
     if (currentFields.address1 || currentFields.city || currentFields.postalCode) {
@@ -830,10 +959,10 @@ async function ensureStructuredAddress(seed) {
     intervalMs: 250,
   });
 
-  fillIfEmpty(fields.address1, fallback.address1);
-  fillIfEmpty(fields.city, fallback.city);
+  fillIfEmpty(fields.address1, fallback.address1, { overwrite });
+  fillIfEmpty(fields.city, fallback.city, { overwrite });
   await selectRegionDropdown(findRegionDropdown(), fallback.region);
-  fillIfEmpty(fields.postalCode, fallback.postalCode);
+  fillIfEmpty(fields.postalCode, fallback.postalCode, { overwrite });
   await sleep(500);
 
   const latest = getStructuredAddressFields();
@@ -895,10 +1024,14 @@ async function fillPlusBillingAddress(payload = {}) {
     },
   };
   let selected = { selectedText: '' };
-  if (!seed.skipAutocomplete) {
+  const fields = getStructuredAddressFields();
+  const useDirectStructuredBranch = Boolean(seed.skipAutocomplete || isDropdownStructuredAddressForm(fields));
+  if (!useDirectStructuredBranch) {
     selected = await selectAddressSuggestion(seed);
   }
-  const structuredAddress = await ensureStructuredAddress(seed);
+  const structuredAddress = await ensureStructuredAddress(seed, {
+    overwrite: useDirectStructuredBranch,
+  });
 
   return {
     countryText,
