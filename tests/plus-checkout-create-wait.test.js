@@ -14,6 +14,10 @@ test('Plus checkout create does not wait 20 seconds after opening checkout page'
     },
     chrome: {
       tabs: {
+        create: async (payload) => {
+          events.push({ type: 'tab-create', payload });
+          return { id: 42 };
+        },
         update: async (tabId, payload) => {
           events.push({ type: 'tab-update', tabId, payload });
         },
@@ -25,9 +29,8 @@ test('Plus checkout create does not wait 20 seconds after opening checkout page'
     ensureContentScriptReadyOnTabUntilStopped: async () => {
       events.push({ type: 'ready' });
     },
-    reuseOrCreateTab: async (source, url, options) => {
-      events.push({ type: 'reuse-tab', source, url, options });
-      return 42;
+    registerTab: async (source, tabId) => {
+      events.push({ type: 'register', source, tabId });
     },
     sendTabMessageUntilStopped: async () => ({
       checkoutUrl: 'https://checkout.stripe.com/c/pay/session',
@@ -47,10 +50,14 @@ test('Plus checkout create does not wait 20 seconds after opening checkout page'
 
   await executor.executePlusCheckoutCreate();
 
-  const reuseEvent = events.find((event) => event.type === 'reuse-tab');
-  assert.equal(reuseEvent.source, 'plus-checkout');
-  assert.equal(reuseEvent.options.reloadIfSameUrl, false);
-  assert.equal(Object.hasOwn(reuseEvent.options, 'inject'), false);
+  assert.deepEqual(
+    events.find((event) => event.type === 'tab-create'),
+    { type: 'tab-create', payload: { url: 'https://chatgpt.com/', active: true } }
+  );
+  assert.deepEqual(
+    events.find((event) => event.type === 'register'),
+    { type: 'register', source: 'plus-checkout', tabId: 42 }
+  );
 
   const sleepEvents = events.filter((event) => event.type === 'sleep');
   assert.deepStrictEqual(sleepEvents.map((event) => event.ms), [1000, 1000]);
@@ -61,75 +68,4 @@ test('Plus checkout create does not wait 20 seconds after opening checkout page'
   assert.ok(completeIndex > readyLogIndex);
   assert.equal(events.some((event) => event.type === 'sleep' && event.ms === 20000), false);
   assert.equal(events.some((event) => event.type === 'log' && /固定等待 20 秒后继续下一步/.test(event.message)), false);
-});
-
-test('Plus checkout create reuses the ChatGPT tab from signup step 5', async () => {
-  const events = [];
-  const executor = api.createPlusCheckoutCreateExecutor({
-    addLog: async (message, level = 'info') => {
-      events.push({ type: 'log', message, level });
-    },
-    chrome: {
-      tabs: {
-        get: async (tabId) => {
-          events.push({ type: 'tab-get', tabId });
-          return { id: tabId, url: 'https://chatgpt.com/' };
-        },
-        update: async (tabId, payload) => {
-          events.push({ type: 'tab-update', tabId, payload });
-        },
-      },
-    },
-    completeStepFromBackground: async (step, payload) => {
-      events.push({ type: 'complete', step, payload });
-    },
-    ensureContentScriptReadyOnTabUntilStopped: async (source, tabId, options) => {
-      events.push({ type: 'ready', source, tabId, options });
-    },
-    getTabId: async (source) => {
-      events.push({ type: 'get-tab-id', source });
-      return source === 'signup-page' ? 55 : null;
-    },
-    isTabAlive: async (source) => {
-      events.push({ type: 'alive', source });
-      return source === 'signup-page';
-    },
-    registerTab: async (source, tabId) => {
-      events.push({ type: 'register', source, tabId });
-    },
-    reuseOrCreateTab: async () => {
-      events.push({ type: 'reuse-tab' });
-      return 42;
-    },
-    sendTabMessageUntilStopped: async () => ({
-      checkoutUrl: 'https://checkout.stripe.com/c/pay/session',
-      country: 'US',
-      currency: 'USD',
-    }),
-    setState: async (payload) => {
-      events.push({ type: 'set-state', payload });
-    },
-    sleepWithStop: async (ms) => {
-      events.push({ type: 'sleep', ms });
-    },
-    waitForTabCompleteUntilStopped: async (tabId) => {
-      events.push({ type: 'tab-complete', tabId });
-    },
-  });
-
-  await executor.executePlusCheckoutCreate();
-
-  assert.equal(events.some((event) => event.type === 'reuse-tab'), false);
-  assert.deepEqual(
-    events.find((event) => event.type === 'register'),
-    { type: 'register', source: 'plus-checkout', tabId: 55 }
-  );
-  assert.deepEqual(
-    events.find((event) => event.type === 'ready').options.inject,
-    ['content/plus-checkout.js']
-  );
-  assert.equal(
-    events.some((event) => event.type === 'log' && /直接接管当前标签页/.test(event.message)),
-    true
-  );
 });
