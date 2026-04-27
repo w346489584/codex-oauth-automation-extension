@@ -2,7 +2,6 @@
 // Injected on: auth0.openai.com, auth.openai.com, accounts.openai.com
 // Dynamically injected on: chatgpt.com
 
-(function initSignupPageContentScript() {
 console.log('[MultiPage:signup-page] Content script loaded on', location.href);
 
 const SIGNUP_PAGE_LISTENER_SENTINEL = 'data-multipage-signup-page-listener';
@@ -3561,4 +3560,3 @@ async function step5_fillNameBirthday(payload) {
   log('步骤 5：已点击“完成帐户创建”，当前步骤直接完成，不再等待页面结果。');
   return completionPayload;
 }
-})();

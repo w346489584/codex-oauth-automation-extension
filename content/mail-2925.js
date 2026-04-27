@@ -1,13 +1,6 @@
 // content/mail-2925.js - Content script for 2925 Mail (steps 4, 8)
 // Injected dynamically on: 2925.com
 
-(function initMail2925ContentScript() {
-if (window.__MULTIPAGE_MAIL2925_SCRIPT_LOADED__) {
-  console.log('[MultiPage:mail-2925] Duplicate injection skipped on', location.href);
-  return;
-}
-window.__MULTIPAGE_MAIL2925_SCRIPT_LOADED__ = true;
-
 const MAIL2925_PREFIX = '[MultiPage:mail-2925]';
 const isTopFrame = window === window.top;
 
@@ -1223,4 +1216,3 @@ async function handlePollEmail(step, payload) {
 }
 
 }
-})();
