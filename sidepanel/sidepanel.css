@@ -2722,6 +2722,36 @@ header {
   cursor: pointer;
 }
 
+.modal-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.modal-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.modal-form-row .data-input,
+.modal-form-row .data-select,
+.modal-form-row .data-textarea {
+  width: 100%;
+}
+
+.modal-form-alert {
+  margin-top: -4px;
+  margin-bottom: 14px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

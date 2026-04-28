@@ -157,10 +157,9 @@ const inputCodex2ApiAdminKey = document.getElementById('input-codex2api-admin-ke
 const rowCustomPassword = document.getElementById('row-custom-password');
 const rowPlusMode = document.getElementById('row-plus-mode');
 const inputPlusModeEnabled = document.getElementById('input-plus-mode-enabled');
-const rowPaypalEmail = document.getElementById('row-paypal-email');
-const inputPaypalEmail = document.getElementById('input-paypal-email');
-const rowPaypalPassword = document.getElementById('row-paypal-password');
-const inputPaypalPassword = document.getElementById('input-paypal-password');
+const rowPayPalAccount = document.getElementById('row-paypal-account');
+const selectPayPalAccount = document.getElementById('select-paypal-account');
+const btnAddPayPalAccount = document.getElementById('btn-add-paypal-account');
 const selectMailProvider = document.getElementById('select-mail-provider');
 const btnMailLogin = document.getElementById('btn-mail-login');
 const rowCustomMailProviderPool = document.getElementById('row-custom-mail-provider-pool');
@@ -299,6 +298,14 @@ const displayHeroSmsPlatform = document.getElementById('display-hero-sms-platfor
 const rowAccountRunHistoryHelperBaseUrl = document.getElementById('row-account-run-history-helper-base-url');
 const inputAccountRunHistoryHelperBaseUrl = document.getElementById('input-account-run-history-helper-base-url');
 const autoStartModal = document.getElementById('auto-start-modal');
+const sharedFormModal = document.getElementById('shared-form-modal');
+const sharedFormModalTitle = document.getElementById('shared-form-modal-title');
+const btnSharedFormModalClose = document.getElementById('btn-shared-form-modal-close');
+const sharedFormModalMessage = document.getElementById('shared-form-modal-message');
+const sharedFormModalAlert = document.getElementById('shared-form-modal-alert');
+const sharedFormModalFields = document.getElementById('shared-form-modal-fields');
+const btnSharedFormModalCancel = document.getElementById('btn-shared-form-modal-cancel');
+const btnSharedFormModalConfirm = document.getElementById('btn-shared-form-modal-confirm');
 const autoStartTitle = autoStartModal?.querySelector('.modal-title');
 const autoStartMessage = document.getElementById('auto-start-message');
 const autoStartAlert = document.getElementById('auto-start-alert');
@@ -661,6 +668,7 @@ const upsertHotmailAccountInList = window.HotmailUtils?.upsertHotmailAccountInLi
 const filterHotmailAccountsByUsage = window.HotmailUtils?.filterHotmailAccountsByUsage;
 const getHotmailBulkActionLabel = window.HotmailUtils?.getHotmailBulkActionLabel;
 const getHotmailListToggleLabel = window.HotmailUtils?.getHotmailListToggleLabel;
+const upsertPayPalAccountInList = window.PayPalUtils?.upsertPayPalAccountInList;
 const normalizeLuckmailTimestampValue = window.LuckMailUtils?.normalizeTimestamp
   || ((value) => {
     const timestamp = Date.parse(String(value || ''));
@@ -668,6 +676,16 @@ const normalizeLuckmailTimestampValue = window.LuckMailUtils?.normalizeTimestamp
   });
 const sidepanelUpdateService = window.SidepanelUpdateService;
 const contributionContentService = window.SidepanelContributionContentService;
+const sharedFormDialog = window.SidepanelFormDialog?.createFormDialog?.({
+  overlay: sharedFormModal,
+  titleNode: sharedFormModalTitle,
+  closeButton: btnSharedFormModalClose,
+  messageNode: sharedFormModalMessage,
+  alertNode: sharedFormModalAlert,
+  fieldsContainer: sharedFormModalFields,
+  cancelButton: btnSharedFormModalCancel,
+  confirmButton: btnSharedFormModalConfirm,
+});
 const DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME = window.LuckMailUtils?.DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME || '保留';
 const normalizeIcloudHost = window.IcloudUtils?.normalizeIcloudHost
   || ((value) => {
@@ -793,6 +811,7 @@ function parseGmailBaseEmail(rawValue = '') {
   const value = String(rawValue || '').trim().toLowerCase();
   const match = value.match(/^([^@\s+]+)@((?:gmail|googlemail)\.com)$/i);
   if (!match) return null;
+
   return {
     localPart: match[1],
     domain: match[2].toLowerCase(),
@@ -2206,6 +2225,12 @@ function collectSettingsPayload() {
       id: typeof DEFAULT_HERO_SMS_COUNTRY_ID !== 'undefined' ? DEFAULT_HERO_SMS_COUNTRY_ID : 52,
       label: typeof DEFAULT_HERO_SMS_COUNTRY_LABEL !== 'undefined' ? DEFAULT_HERO_SMS_COUNTRY_LABEL : 'Thailand',
     };
+  const payPalAccounts = typeof getPayPalAccounts === 'function'
+    ? getPayPalAccounts(latestState)
+    : (Array.isArray(latestState?.paypalAccounts) ? latestState.paypalAccounts : []);
+  const currentPayPalAccount = typeof getCurrentPayPalAccount === 'function'
+    ? getCurrentPayPalAccount(latestState)
+    : payPalAccounts.find((account) => account?.id === String(latestState?.currentPayPalAccountId || '').trim()) || null;
   return {
     ...(contributionModeEnabled ? {} : {
       panelMode: selectPanelMode.value,
@@ -2238,12 +2263,10 @@ function collectSettingsPayload() {
     plusModeEnabled: typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled
       ? Boolean(inputPlusModeEnabled.checked)
       : Boolean(latestState?.plusModeEnabled),
-    paypalEmail: typeof inputPaypalEmail !== 'undefined' && inputPaypalEmail
-      ? inputPaypalEmail.value.trim()
-      : String(latestState?.paypalEmail || ''),
-    paypalPassword: typeof inputPaypalPassword !== 'undefined' && inputPaypalPassword
-      ? inputPaypalPassword.value
-      : String(latestState?.paypalPassword || ''),
+    paypalEmail: String(currentPayPalAccount?.email || latestState?.paypalEmail || '').trim(),
+    paypalPassword: String(currentPayPalAccount?.password || latestState?.paypalPassword || ''),
+    currentPayPalAccountId: String(latestState?.currentPayPalAccountId || '').trim(),
+    paypalAccounts: payPalAccounts,
     ...(contributionModeEnabled ? {} : {
       customPassword: inputPassword.value,
     }),
@@ -2485,8 +2508,7 @@ function updatePlusModeUI() {
     ? Boolean(inputPlusModeEnabled.checked)
     : false;
   [
-    typeof rowPaypalEmail !== 'undefined' ? rowPaypalEmail : null,
-    typeof rowPaypalPassword !== 'undefined' ? rowPaypalPassword : null,
+    typeof rowPayPalAccount !== 'undefined' ? rowPayPalAccount : null,
   ].forEach((row) => {
     if (!row) {
       return;
@@ -2793,12 +2815,6 @@ function applySettingsState(state) {
   if (typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled) {
     inputPlusModeEnabled.checked = Boolean(state?.plusModeEnabled);
   }
-  if (typeof inputPaypalEmail !== 'undefined' && inputPaypalEmail) {
-    inputPaypalEmail.value = state?.paypalEmail || '';
-  }
-  if (typeof inputPaypalPassword !== 'undefined' && inputPaypalPassword) {
-    inputPaypalPassword.value = state?.paypalPassword || '';
-  }
   inputVpsUrl.value = state?.vpsUrl || '';
   inputVpsPassword.value = state?.vpsPassword || '';
   setLocalCpaStep9Mode(state?.localCpaStep9Mode);
@@ -3000,6 +3016,9 @@ function applySettingsState(state) {
   updateFallbackThreadIntervalInputState();
   updateAccountRunHistorySettingsUI();
   updatePhoneVerificationSettingsUI();
+  if (typeof renderPayPalAccounts === 'function') {
+    renderPayPalAccounts();
+  }
   if (typeof updatePlusModeUI === 'function') {
     updatePlusModeUI();
   }
@@ -3662,6 +3681,15 @@ function getCurrentMail2925Account(state = latestState) {
 
 function getCurrentMail2925Email(state = latestState) {
   return String(getCurrentMail2925Account(state)?.email || '').trim();
+}
+
+function getPayPalAccounts(state = latestState) {
+  return Array.isArray(state?.paypalAccounts) ? state.paypalAccounts : [];
+}
+
+function getCurrentPayPalAccount(state = latestState) {
+  const currentId = String(state?.currentPayPalAccountId || '').trim();
+  return getPayPalAccounts(state).find((account) => account.id === currentId) || null;
 }
 
 function syncMail2925BaseEmailFromCurrentAccount(state = latestState, options = {}) {
@@ -4563,6 +4591,39 @@ const renderHotmailAccounts = hotmailManager?.renderHotmailAccounts
 const bindHotmailEvents = hotmailManager?.bindHotmailEvents
   || (() => { });
 bindHotmailEvents();
+
+const payPalManager = window.SidepanelPayPalManager?.createPayPalManager({
+  state: {
+    getLatestState: () => latestState,
+    syncLatestState,
+  },
+  dom: {
+    btnAddPayPalAccount,
+    selectPayPalAccount,
+  },
+  helpers: {
+    escapeHtml,
+    getPayPalAccounts,
+    openFormDialog: (options) => {
+      if (!sharedFormDialog?.open) {
+        throw new Error('表单弹窗能力未加载，请刷新扩展后重试。');
+      }
+      return sharedFormDialog.open(options);
+    },
+    showToast,
+  },
+  runtime: {
+    sendMessage: (message) => chrome.runtime.sendMessage(message),
+  },
+  paypalUtils: {
+    upsertPayPalAccountInList,
+  },
+});
+const renderPayPalAccounts = payPalManager?.renderPayPalAccounts
+  || (() => { });
+const bindPayPalEvents = payPalManager?.bindPayPalEvents
+  || (() => { });
+bindPayPalEvents();
 
 const mail2925Manager = window.SidepanelMail2925Manager?.createMail2925Manager({
   state: {
@@ -5523,16 +5584,6 @@ inputPlusModeEnabled?.addEventListener('change', () => {
   syncStepDefinitionsForMode(Boolean(inputPlusModeEnabled.checked), { render: true });
   markSettingsDirty(true);
   saveSettings({ silent: true }).catch(() => { });
-});
-
-[inputPaypalEmail, inputPaypalPassword].forEach((input) => {
-  input?.addEventListener('input', () => {
-    markSettingsDirty(true);
-    scheduleSettingsAutoSave();
-  });
-  input?.addEventListener('blur', () => {
-    saveSettings({ silent: true }).catch(() => { });
-  });
 });
 
 selectMailProvider.addEventListener('change', async () => {
@@ -6519,6 +6570,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       applyAutoRunStatus(currentAutoRun);
       updateProgressCounter();
       updateButtonStates();
+      renderPayPalAccounts();
       renderHotmailAccounts();
       renderMail2925Accounts();
       if (isLuckmailProvider()) {
@@ -6720,6 +6772,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         if (selectMailProvider.value === 'hotmail-api') {
           inputEmail.value = getCurrentHotmailEmail();
         }
+      }
+      if (message.payload.currentPayPalAccountId !== undefined || message.payload.paypalAccounts !== undefined) {
+        renderPayPalAccounts();
       }
       if (message.payload.currentMail2925AccountId !== undefined || message.payload.mail2925Accounts !== undefined) {
         renderMail2925Accounts();

@@ -35,8 +35,10 @@
       finalizeStep3Completion,
       finalizeIcloudAliasAfterSuccessfulFlow,
       findHotmailAccount,
+      findPayPalAccount,
       flushCommand,
       getCurrentLuckmailPurchase,
+      getCurrentPayPalAccount,
       getCurrentMail2925Account,
       getPendingAutoRunTimerPlan,
       getSourceLabel,
@@ -62,6 +64,7 @@
       refreshIpProxyPool,
       normalizeHotmailAccounts,
       normalizeMail2925Accounts,
+      normalizePayPalAccounts,
       normalizeRunCount,
       AUTO_RUN_TIMER_KIND_SCHEDULED_START,
       notifyStepComplete,
@@ -79,6 +82,7 @@
       selectLuckmailPurchase,
       switchIpProxy,
       changeIpProxyExit,
+      setCurrentPayPalAccount,
       setCurrentMail2925Account,
       setCurrentHotmailAccount,
       setContributionMode,
@@ -99,7 +103,9 @@
       deleteMail2925Account,
       deleteMail2925Accounts,
       syncHotmailAccounts,
+      syncPayPalAccounts,
       testHotmailAccountMailAccess,
+      upsertPayPalAccount,
       upsertMail2925Account,
       upsertHotmailAccount,
       verifyHotmailAccount,
@@ -776,6 +782,16 @@
 
         case 'UPSERT_HOTMAIL_ACCOUNT': {
           const account = await upsertHotmailAccount(message.payload || {});
+          return { ok: true, account };
+        }
+
+        case 'UPSERT_PAYPAL_ACCOUNT': {
+          const account = await upsertPayPalAccount(message.payload || {});
+          return { ok: true, account };
+        }
+
+        case 'SELECT_PAYPAL_ACCOUNT': {
+          const account = await setCurrentPayPalAccount(String(message.payload?.accountId || ''));
           return { ok: true, account };
         }
 

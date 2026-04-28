@@ -3,10 +3,12 @@
 importScripts(
   'managed-alias-utils.js',
   'mail2925-utils.js',
+  'paypal-utils.js',
   'background/phone-verification-flow.js',
   'background/account-run-history.js',
   'background/contribution-oauth.js',
   'background/mail-2925-session.js',
+  'background/paypal-account-store.js',
   'background/ip-proxy-provider-711proxy.js',
   'background/ip-proxy-core.js',
   'background/panel-bridge.js',
@@ -436,6 +438,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   plusModeEnabled: false,
   paypalEmail: '',
   paypalPassword: '',
+  currentPayPalAccountId: '',
   autoRunSkipFailures: false,
   autoRunFallbackThreadIntervalMinutes: 0,
   autoRunDelayEnabled: false,
@@ -476,6 +479,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   cloudflareTempEmailDomains: [],
   hotmailAccounts: [],
   mail2925Accounts: [],
+  paypalAccounts: [],
   heroSmsApiKey: '',
   heroSmsCountryId: HERO_SMS_COUNTRY_ID,
   heroSmsCountryLabel: HERO_SMS_COUNTRY_LABEL,
@@ -575,6 +579,7 @@ const DEFAULT_STATE = {
   loginVerificationRequestedAt: null,
   oauthFlowDeadlineAt: null,
   oauthFlowDeadlineSourceUrl: null,
+  currentPayPalAccountId: null,
   currentHotmailAccountId: null,
   currentMail2925AccountId: null,
   preferredIcloudHost: '',
@@ -1242,6 +1247,8 @@ function normalizePersistentSettingValue(key, value) {
       return String(value || '').trim();
     case 'paypalPassword':
       return String(value || '');
+    case 'currentPayPalAccountId':
+      return String(value || '').trim();
     case 'autoRunSkipFailures':
     case 'autoRunDelayEnabled':
     case 'phoneVerificationEnabled':
@@ -1314,6 +1321,8 @@ function normalizePersistentSettingValue(key, value) {
       return normalizeHotmailAccounts(value);
     case 'mail2925Accounts':
       return normalizeMail2925Accounts(value);
+    case 'paypalAccounts':
+      return normalizePayPalAccounts(value);
     case 'heroSmsApiKey':
       return String(value || '');
     case 'heroSmsCountryId':
@@ -1927,6 +1936,50 @@ function generatePassword() {
 
   // Shuffle
   return pw.split('').sort(() => Math.random() - 0.5).join('');
+}
+
+function normalizePayPalAccount(account = {}) {
+  if (self.PayPalUtils?.normalizePayPalAccount) {
+    return self.PayPalUtils.normalizePayPalAccount(account);
+  }
+  return {
+    id: String(account.id || crypto.randomUUID()),
+    email: String(account.email || '').trim().toLowerCase(),
+    password: String(account.password || ''),
+    createdAt: Number.isFinite(Number(account.createdAt)) ? Number(account.createdAt) : Date.now(),
+    updatedAt: Number.isFinite(Number(account.updatedAt)) ? Number(account.updatedAt) : Date.now(),
+    lastUsedAt: Number.isFinite(Number(account.lastUsedAt)) ? Number(account.lastUsedAt) : 0,
+  };
+}
+
+function normalizePayPalAccounts(accounts) {
+  if (self.PayPalUtils?.normalizePayPalAccounts) {
+    return self.PayPalUtils.normalizePayPalAccounts(accounts);
+  }
+  return Array.isArray(accounts) ? accounts.map((account) => normalizePayPalAccount(account)) : [];
+}
+
+function findPayPalAccount(accounts, accountId) {
+  if (self.PayPalUtils?.findPayPalAccount) {
+    return self.PayPalUtils.findPayPalAccount(accounts, accountId);
+  }
+  const normalizedId = String(accountId || '').trim();
+  if (!normalizedId) return null;
+  return normalizePayPalAccounts(accounts).find((account) => account.id === normalizedId) || null;
+}
+
+function upsertPayPalAccountInList(accounts, nextAccount) {
+  if (self.PayPalUtils?.upsertPayPalAccountInList) {
+    return self.PayPalUtils.upsertPayPalAccountInList(accounts, nextAccount);
+  }
+  const normalizedNext = normalizePayPalAccount(nextAccount);
+  const list = normalizePayPalAccounts(accounts);
+  const existingIndex = list.findIndex((account) => account.id === normalizedNext.id);
+  if (existingIndex >= 0) {
+    list[existingIndex] = normalizedNext;
+    return list;
+  }
+  return [...list, normalizedNext];
 }
 
 function normalizeHotmailAccount(account = {}) {
@@ -7544,6 +7597,39 @@ function isMail2925PoolExhaustedPauseError(error) {
   return /^MAIL2925_POOL_EXHAUSTED_PAUSE::/.test(message);
 }
 
+const payPalAccountStore = self.MultiPageBackgroundPayPalAccountStore?.createPayPalAccountStore({
+  broadcastDataUpdate,
+  findPayPalAccount,
+  getState,
+  normalizePayPalAccount,
+  normalizePayPalAccounts,
+  setPersistentSettings,
+  setState,
+  upsertPayPalAccountInList,
+});
+
+async function syncPayPalAccounts(accounts) {
+  return payPalAccountStore?.syncPayPalAccounts?.(accounts) || [];
+}
+
+async function upsertPayPalAccount(input = {}) {
+  if (!payPalAccountStore?.upsertPayPalAccount) {
+    throw new Error('PayPal 账号存储能力尚未接入。');
+  }
+  return payPalAccountStore.upsertPayPalAccount(input);
+}
+
+async function setCurrentPayPalAccount(accountId) {
+  if (!payPalAccountStore?.setCurrentPayPalAccount) {
+    throw new Error('PayPal 账号选择能力尚未接入。');
+  }
+  return payPalAccountStore.setCurrentPayPalAccount(accountId);
+}
+
+function getCurrentPayPalAccount(state = null) {
+  return payPalAccountStore?.getCurrentPayPalAccount?.(state || {}) || null;
+}
+
 const generatedEmailHelpers = self.MultiPageGeneratedEmailHelpers?.createGeneratedEmailHelpers({
   addLog,
   buildGeneratedAliasEmail,
@@ -8729,6 +8815,7 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   deleteHotmailAccounts,
   deleteIcloudAlias,
   deleteUsedIcloudAliases,
+  findPayPalAccount,
   disableUsedLuckmailPurchases,
   doesStepUseCompletionSignal,
   ensureMail2925MailboxSession,
@@ -8773,9 +8860,11 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   listIcloudAliases,
   listLuckmailPurchasesForManagement,
   refreshIpProxyPool,
+  getCurrentPayPalAccount,
   getCurrentMail2925Account,
   normalizeHotmailAccounts,
   normalizeMail2925Accounts,
+  normalizePayPalAccounts,
   normalizeRunCount,
   AUTO_RUN_TIMER_KIND_SCHEDULED_START,
   notifyStepComplete,
@@ -8791,6 +8880,7 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   selectLuckmailPurchase,
   switchIpProxy,
   changeIpProxyExit,
+  setCurrentPayPalAccount,
   setCurrentHotmailAccount,
   setCurrentMail2925Account,
   setContributionMode,
@@ -8810,9 +8900,11 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   startAutoRunLoop,
   pollContributionStatus: (...args) => contributionOAuthManager?.pollContributionStatus?.(...args),
   syncHotmailAccounts,
+  syncPayPalAccounts,
   deleteMail2925Account,
   deleteMail2925Accounts,
   testHotmailAccountMailAccess,
+  upsertPayPalAccount,
   upsertMail2925Account,
   upsertHotmailAccount,
   verifyHotmailAccount,

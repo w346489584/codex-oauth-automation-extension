@@ -383,13 +383,14 @@
           <span class="setting-caption">PayPal 订阅链路</span>
         </div>
       </div>
-      <div class="data-row" id="row-paypal-email" style="display:none;">
+      <div class="data-row" id="row-paypal-account" style="display:none;">
         <span class="data-label">PayPal 账号</span>
-        <input type="text" id="input-paypal-email" class="data-input" placeholder="请输入 PayPal 登录邮箱" />
-      </div>
-      <div class="data-row" id="row-paypal-password" style="display:none;">
-        <span class="data-label">PayPal 密码</span>
-        <input type="password" id="input-paypal-password" class="data-input" placeholder="请输入 PayPal 登录密码" />
+        <div class="data-inline">
+          <select id="select-paypal-account" class="data-select">
+            <option value="">请先添加 PayPal 账号</option>
+          </select>
+          <button id="btn-add-paypal-account" class="btn btn-outline btn-sm data-inline-btn" type="button">添加</button>
+        </div>
       </div>
       <div class="data-row">
         <span class="data-label">邮箱服务</span>
@@ -986,6 +987,22 @@
     </div>
   </div>
 
+  <div id="shared-form-modal" class="modal-overlay" hidden>
+    <div class="modal-card modal-card-form">
+      <div class="modal-header">
+        <span id="shared-form-modal-title" class="modal-title">添加账号</span>
+        <button id="btn-shared-form-modal-close" class="modal-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <p id="shared-form-modal-message" class="modal-message" hidden></p>
+      <p id="shared-form-modal-alert" class="modal-alert" hidden></p>
+      <div id="shared-form-modal-fields" class="modal-form-fields"></div>
+      <div class="modal-actions">
+        <button id="btn-shared-form-modal-cancel" class="btn btn-ghost btn-sm" type="button">取消</button>
+        <button id="btn-shared-form-modal-confirm" class="btn btn-primary btn-sm" type="button">确认</button>
+      </div>
+    </div>
+  </div>
+
   <div id="auto-start-modal" class="modal-overlay" hidden>
     <div class="modal-card">
       <div class="modal-header">
@@ -1012,6 +1029,7 @@
   <input id="input-import-settings-file" type="file" accept=".json,application/json" hidden />
   <script src="../managed-alias-utils.js"></script>
   <script src="../mail2925-utils.js"></script>
+  <script src="../paypal-utils.js"></script>
   <script src="../icloud-utils.js"></script>
   <script src="../mail-provider-utils.js"></script>
   <script src="../hotmail-utils.js"></script>
@@ -1020,8 +1038,10 @@
   <script src="update-service.js"></script>
   <script src="contribution-content-update-service.js"></script>
   <script src="account-pool-ui.js"></script>
+  <script src="form-dialog.js"></script>
   <script src="hotmail-manager.js"></script>
   <script src="mail-2925-manager.js"></script>
+  <script src="paypal-manager.js"></script>
   <script src="icloud-manager.js"></script>
   <script src="luckmail-manager.js"></script>
   <script src="ip-proxy-provider-711proxy.js"></script>
