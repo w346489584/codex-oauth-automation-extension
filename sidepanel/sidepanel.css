@@ -798,6 +798,20 @@ header {
   white-space: nowrap;
 }
 
+.section-collapse-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.section-collapse-body[hidden] {
+  display: none;
+}
+
+#btn-toggle-hotmail-section {
+  white-space: nowrap;
+}
+
 .ip-proxy-fold {
   width: 100%;
   border: none;

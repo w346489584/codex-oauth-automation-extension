@@ -190,6 +190,8 @@ const cloudflareTempEmailSection = document.getElementById('cloudflare-temp-emai
 const btnCloudflareTempEmailUsageGuide = document.getElementById('btn-cloudflare-temp-email-usage-guide');
 const btnCloudflareTempEmailGithub = document.getElementById('btn-cloudflare-temp-email-github');
 const hotmailSection = document.getElementById('hotmail-section');
+const btnToggleHotmailSection = document.getElementById('btn-toggle-hotmail-section');
+const hotmailSectionBody = document.getElementById('hotmail-section-body');
 const mail2925Section = document.getElementById('mail2925-section');
 const luckmailSection = document.getElementById('luckmail-section');
 const icloudSection = document.getElementById('icloud-section');
@@ -372,6 +374,7 @@ const PLUS_CONTRIBUTION_ACCOUNT_CREDIT = 5;
 const PLUS_CONTRIBUTION_DONATION_CREDIT = 20;
 const HOTMAIL_SERVICE_MODE_REMOTE = 'remote';
 const HOTMAIL_SERVICE_MODE_LOCAL = 'local';
+const HOTMAIL_SECTION_EXPANDED_STORAGE_KEY = 'multipage-hotmail-section-expanded';
 const ICLOUD_PROVIDER = 'icloud';
 const GMAIL_PROVIDER = 'gmail';
 const GMAIL_ALIAS_GENERATOR = 'gmail-alias';
@@ -649,6 +652,7 @@ let settingsAutoSaveTimer = null;
 let settingsSaveRevision = 0;
 let cloudflareDomainEditMode = false;
 let cloudflareTempEmailDomainEditMode = false;
+let hotmailSectionExpanded = false;
 let modalChoiceResolver = null;
 let currentModalActions = [];
 let modalResultBuilder = null;
@@ -2486,6 +2490,56 @@ function setHotmailServiceMode(mode) {
   });
 }
 
+function readHotmailSectionExpanded() {
+  try {
+    return localStorage.getItem(HOTMAIL_SECTION_EXPANDED_STORAGE_KEY) === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+function persistHotmailSectionExpanded(expanded) {
+  try {
+    if (expanded) {
+      localStorage.setItem(HOTMAIL_SECTION_EXPANDED_STORAGE_KEY, '1');
+    } else {
+      localStorage.removeItem(HOTMAIL_SECTION_EXPANDED_STORAGE_KEY);
+    }
+  } catch (err) {
+    // Keep the current session state even if storage is unavailable.
+  }
+}
+
+function updateHotmailSectionExpandedUI() {
+  const useHotmail = selectMailProvider?.value === 'hotmail-api';
+  const expanded = useHotmail && hotmailSectionExpanded;
+  if (hotmailSectionBody) {
+    hotmailSectionBody.hidden = !expanded;
+  }
+  if (btnToggleHotmailSection) {
+    btnToggleHotmailSection.textContent = expanded ? '收起设置' : '展开设置';
+    btnToggleHotmailSection.title = expanded ? '收起 Hotmail 账号池设置' : '展开 Hotmail 账号池设置';
+    btnToggleHotmailSection.setAttribute('aria-expanded', String(expanded));
+  }
+}
+
+function setHotmailSectionExpanded(expanded, options = {}) {
+  const { persist = true } = options;
+  hotmailSectionExpanded = Boolean(expanded);
+  updateHotmailSectionExpandedUI();
+  if (persist) {
+    persistHotmailSectionExpanded(hotmailSectionExpanded);
+  }
+}
+
+function toggleHotmailSectionExpanded() {
+  setHotmailSectionExpanded(!hotmailSectionExpanded);
+}
+
+function initHotmailSectionExpandedState() {
+  setHotmailSectionExpanded(readHotmailSectionExpanded(), { persist: false });
+}
+
 function updateAccountRunHistorySettingsUI() {
   if (!rowAccountRunHistoryHelperBaseUrl) {
     return;
@@ -4018,6 +4072,9 @@ function updateMailProviderUI() {
   if (hotmailSection) {
     hotmailSection.style.display = useHotmail ? '' : 'none';
   }
+  if (typeof updateHotmailSectionExpandedUI === 'function') {
+    updateHotmailSectionExpandedUI();
+  }
   if (mail2925Section) {
     mail2925Section.style.display = useMail2925AccountPool ? '' : 'none';
   }
@@ -5216,6 +5273,18 @@ btnToggleIpProxySection?.addEventListener('click', () => {
     toggleIpProxySectionExpanded();
   }
 });
+
+btnToggleHotmailSection?.addEventListener('click', () => {
+  toggleHotmailSectionExpanded();
+});
+
+btnToggleHotmailForm?.addEventListener('click', () => {
+  setHotmailSectionExpanded(true);
+}, true);
+
+btnToggleHotmailList?.addEventListener('click', () => {
+  setHotmailSectionExpanded(true);
+}, true);
 
 btnMailLogin?.addEventListener('click', async () => {
   const config = getMailProviderLoginConfig();
@@ -7040,6 +7109,7 @@ bindPasswordVisibilityToggles();
 initTheme();
 initHotmailListExpandedState();
 initMail2925ListExpandedState();
+initHotmailSectionExpandedState();
 if (typeof initIpProxySectionExpandedState === 'function') {
   initIpProxySectionExpandedState();
 }

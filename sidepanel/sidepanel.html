@@ -658,6 +658,8 @@
           <span class="section-label">Hotmail 账号池</span>
         </div>
         <div class="section-mini-actions">
+          <button id="btn-toggle-hotmail-section" class="btn btn-ghost btn-xs" type="button"
+            aria-expanded="false" aria-controls="hotmail-section-body">展开设置</button>
           <button id="btn-toggle-hotmail-form" class="btn btn-outline btn-xs" type="button"
             aria-expanded="false">添加账号</button>
           <button id="btn-hotmail-usage-guide" class="btn btn-ghost btn-xs" type="button">使用教程</button>
@@ -667,71 +669,73 @@
             aria-expanded="false">展开列表</button>
         </div>
       </div>
-      <div class="data-row" id="row-hotmail-service-mode">
-        <span class="data-label">接码模式</span>
-        <div id="hotmail-service-mode-group" class="choice-group" role="group" aria-label="Hotmail 接码模式">
-          <button type="button" class="choice-btn" data-hotmail-service-mode="remote">API对接</button>
-          <button type="button" class="choice-btn" data-hotmail-service-mode="local">本地助手</button>
-        </div>
-      </div>
-      <div class="data-row" id="row-hotmail-remote-base-url">
-        <span class="data-label">API对接</span>
-        <input type="text" id="input-hotmail-remote-base-url" class="data-input mono"
-          placeholder="微软邮箱 API 对接模式无需填写地址" />
-      </div>
-      <div class="data-row" id="row-hotmail-local-base-url" style="display:none;">
-        <span class="data-label">本地助手</span>
-        <input type="text" id="input-hotmail-local-base-url" class="data-input mono"
-          placeholder="http://127.0.0.1:17373" />
-      </div>
-      <div id="hotmail-form-shell" class="account-pool-form-shell" hidden>
-        <div class="data-row">
-          <span class="data-label">邮箱</span>
-          <input type="text" id="input-hotmail-email" class="data-input" placeholder="name@hotmail.com" />
-        </div>
-        <div class="data-row">
-          <span class="data-label">客户端 ID</span>
-          <input type="text" id="input-hotmail-client-id" class="data-input mono" placeholder="微软应用客户端 ID" />
-        </div>
-        <div class="data-row">
-          <span class="data-label">邮箱密码</span>
-          <div class="input-with-icon">
-            <input type="password" id="input-hotmail-password" class="data-input data-input-with-icon"
-              placeholder="可选，仅用于记录" />
-            <button id="btn-toggle-hotmail-password" class="input-icon-btn" type="button"
-              data-password-toggle="input-hotmail-password" data-show-label="显示 Hotmail 密码"
-              data-hide-label="隐藏 Hotmail 密码" aria-label="显示 Hotmail 密码" title="显示 Hotmail 密码"></button>
+      <div id="hotmail-section-body" class="section-collapse-body" hidden>
+        <div class="data-row" id="row-hotmail-service-mode">
+          <span class="data-label">接码模式</span>
+          <div id="hotmail-service-mode-group" class="choice-group" role="group" aria-label="Hotmail 接码模式">
+            <button type="button" class="choice-btn" data-hotmail-service-mode="remote">API对接</button>
+            <button type="button" class="choice-btn" data-hotmail-service-mode="local">本地助手</button>
           </div>
         </div>
-        <div class="data-row">
-          <span class="data-label">刷新令牌</span>
-          <div class="input-with-icon">
-            <input type="password" id="input-hotmail-refresh-token" class="data-input data-input-with-icon mono"
-              placeholder="必填，粘贴刷新令牌（refresh token）" />
-            <button id="btn-toggle-hotmail-refresh-token" class="input-icon-btn" type="button"
-              data-password-toggle="input-hotmail-refresh-token" data-show-label="显示 Hotmail 刷新令牌"
-              data-hide-label="隐藏 Hotmail 刷新令牌" aria-label="显示 Hotmail 刷新令牌"
-              title="显示 Hotmail 刷新令牌"></button>
+        <div class="data-row" id="row-hotmail-remote-base-url">
+          <span class="data-label">API对接</span>
+          <input type="text" id="input-hotmail-remote-base-url" class="data-input mono"
+            placeholder="微软邮箱 API 对接模式无需填写地址" />
+        </div>
+        <div class="data-row" id="row-hotmail-local-base-url" style="display:none;">
+          <span class="data-label">本地助手</span>
+          <input type="text" id="input-hotmail-local-base-url" class="data-input mono"
+            placeholder="http://127.0.0.1:17373" />
+        </div>
+        <div id="hotmail-form-shell" class="account-pool-form-shell" hidden>
+          <div class="data-row">
+            <span class="data-label">邮箱</span>
+            <input type="text" id="input-hotmail-email" class="data-input" placeholder="name@hotmail.com" />
+          </div>
+          <div class="data-row">
+            <span class="data-label">客户端 ID</span>
+            <input type="text" id="input-hotmail-client-id" class="data-input mono" placeholder="微软应用客户端 ID" />
+          </div>
+          <div class="data-row">
+            <span class="data-label">邮箱密码</span>
+            <div class="input-with-icon">
+              <input type="password" id="input-hotmail-password" class="data-input data-input-with-icon"
+                placeholder="可选，仅用于记录" />
+              <button id="btn-toggle-hotmail-password" class="input-icon-btn" type="button"
+                data-password-toggle="input-hotmail-password" data-show-label="显示 Hotmail 密码"
+                data-hide-label="隐藏 Hotmail 密码" aria-label="显示 Hotmail 密码" title="显示 Hotmail 密码"></button>
+            </div>
+          </div>
+          <div class="data-row">
+            <span class="data-label">刷新令牌</span>
+            <div class="input-with-icon">
+              <input type="password" id="input-hotmail-refresh-token" class="data-input data-input-with-icon mono"
+                placeholder="必填，粘贴刷新令牌（refresh token）" />
+              <button id="btn-toggle-hotmail-refresh-token" class="input-icon-btn" type="button"
+                data-password-toggle="input-hotmail-refresh-token" data-show-label="显示 Hotmail 刷新令牌"
+                data-hide-label="隐藏 Hotmail 刷新令牌" aria-label="显示 Hotmail 刷新令牌"
+                title="显示 Hotmail 刷新令牌"></button>
+            </div>
+          </div>
+          <div class="data-row hotmail-actions-row">
+            <span class="data-label"></span>
+            <div class="data-inline account-pool-actions-inline">
+              <button id="btn-add-hotmail-account" class="btn btn-primary btn-sm" type="button">添加账号</button>
+              <button id="btn-import-hotmail-accounts" class="btn btn-outline btn-sm account-pool-import-action"
+                type="button">批量导入</button>
+            </div>
+          </div>
+          <div class="data-row hotmail-import-row">
+            <span class="data-label">批量导入</span>
+            <div class="hotmail-import-box">
+              <textarea id="input-hotmail-import" class="data-textarea mono"
+                placeholder="账号----密码----客户端ID----刷新令牌&#10;name@hotmail.com----password----client-id----refresh-token"></textarea>
+            </div>
           </div>
         </div>
-        <div class="data-row hotmail-actions-row">
-          <span class="data-label"></span>
-          <div class="data-inline account-pool-actions-inline">
-            <button id="btn-add-hotmail-account" class="btn btn-primary btn-sm" type="button">添加账号</button>
-            <button id="btn-import-hotmail-accounts" class="btn btn-outline btn-sm account-pool-import-action"
-              type="button">批量导入</button>
-          </div>
+        <div id="hotmail-list-shell" class="hotmail-list-shell is-collapsed">
+          <div id="hotmail-accounts-list" class="hotmail-accounts-list"></div>
         </div>
-        <div class="data-row hotmail-import-row">
-          <span class="data-label">批量导入</span>
-          <div class="hotmail-import-box">
-            <textarea id="input-hotmail-import" class="data-textarea mono"
-              placeholder="账号----密码----客户端ID----刷新令牌&#10;name@hotmail.com----password----client-id----refresh-token"></textarea>
-          </div>
-        </div>
-      </div>
-      <div id="hotmail-list-shell" class="hotmail-list-shell is-collapsed">
-        <div id="hotmail-accounts-list" class="hotmail-accounts-list"></div>
       </div>
     </div>
     <div id="mail2925-section" class="data-card hotmail-card" style="display:none;">
