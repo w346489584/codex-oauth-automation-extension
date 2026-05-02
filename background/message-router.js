@@ -331,7 +331,11 @@
             const step5Status = latestState.stepStatuses?.[5];
             if (step5Status !== 'running' && step5Status !== 'completed' && step5Status !== 'manual_completed') {
               await setStepStatus(5, 'skipped');
-              await addLog('步骤 4：检测到账号已直接进入已登录态，已自动跳过步骤 5。', 'warn');
+              if (payload.skipProfileStepReason === 'combined_verification_profile') {
+                await addLog('步骤 4：当前验证码页已内嵌完成注册资料提交，已自动跳过步骤 5。', 'warn');
+              } else {
+                await addLog('步骤 4：检测到账号已直接进入已登录态，已自动跳过步骤 5。', 'warn');
+              }
             }
           }
           break;

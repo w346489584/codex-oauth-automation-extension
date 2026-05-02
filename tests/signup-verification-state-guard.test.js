@@ -253,3 +253,54 @@ return {
     state: 'step5',
   });
 });
+
+test('signup verification state keeps verification priority when email-verification page also shows profile fields', () => {
+  const api = new Function(`
+const location = {
+  href: 'https://auth.openai.com/email-verification/register',
+};
+
+function isStep5Ready() {
+  return true;
+}
+
+function isVerificationPageStillVisible() {
+  return true;
+}
+
+function isSignupPasswordErrorPage() {
+  return false;
+}
+
+function getSignupPasswordTimeoutErrorPageState() {
+  return null;
+}
+
+function isSignupEmailAlreadyExistsPage() {
+  return false;
+}
+
+function getSignupPasswordInput() {
+  return null;
+}
+
+function getSignupPasswordSubmitButton() {
+  return null;
+}
+
+${extractFunction('isSignupProfilePageUrl')}
+${extractFunction('isLikelyLoggedInChatgptHomeUrl')}
+${extractFunction('getStep4PostVerificationState')}
+${extractFunction('inspectSignupVerificationState')}
+
+return {
+  run() {
+    return inspectSignupVerificationState();
+  },
+};
+`)();
+
+  assert.deepStrictEqual(api.run(), {
+    state: 'verification',
+  });
+});

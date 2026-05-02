@@ -1282,6 +1282,146 @@ test('verification flow uses resilient signup-page transport when submitting ver
   assert.ok(resilientCalls[0].options.timeoutMs >= 30000);
 });
 
+test('verification flow forwards optional signup profile payload when submitting signup verification code', async () => {
+  const resilientCalls = [];
+
+  const helpers = api.createVerificationFlowHelpers({
+    addLog: async () => {},
+    chrome: {
+      tabs: {
+        update: async () => {},
+      },
+    },
+    CLOUDFLARE_TEMP_EMAIL_PROVIDER: 'cloudflare-temp-email',
+    completeStepFromBackground: async () => {},
+    confirmCustomVerificationStepBypassRequest: async () => ({ confirmed: true }),
+    getHotmailVerificationPollConfig: () => ({}),
+    getHotmailVerificationRequestTimestamp: () => 0,
+    getState: async () => ({}),
+    getTabId: async () => 1,
+    HOTMAIL_PROVIDER: 'hotmail-api',
+    isStopError: () => false,
+    LUCKMAIL_PROVIDER: 'luckmail-api',
+    MAIL_2925_VERIFICATION_INTERVAL_MS: 15000,
+    MAIL_2925_VERIFICATION_MAX_ATTEMPTS: 15,
+    pollCloudflareTempEmailVerificationCode: async () => ({}),
+    pollHotmailVerificationCode: async () => ({}),
+    pollLuckmailVerificationCode: async () => ({}),
+    sendToContentScript: async () => {
+      throw new Error('should not use non-resilient channel');
+    },
+    sendToContentScriptResilient: async (_source, message) => {
+      resilientCalls.push(message);
+      return { success: true, skipProfileStep: true };
+    },
+    sendToMailContentScriptResilient: async () => ({}),
+    setState: async () => {},
+    setStepStatus: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+    VERIFICATION_POLL_MAX_ROUNDS: 5,
+  });
+
+  const result = await helpers.submitVerificationCode(4, '654321', {
+    signupProfile: {
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      year: 2003,
+      month: 6,
+      day: 19,
+    },
+  });
+
+  assert.deepStrictEqual(result, { success: true, skipProfileStep: true });
+  assert.deepStrictEqual(resilientCalls[0].payload.signupProfile, {
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    year: 2003,
+    month: 6,
+    day: 19,
+  });
+});
+
+test('verification flow keeps combined signup profile skip reason when completing signup verification', async () => {
+  const completed = [];
+  const resilientCalls = [];
+
+  const helpers = api.createVerificationFlowHelpers({
+    addLog: async () => {},
+    chrome: {
+      tabs: {
+        update: async () => {},
+      },
+    },
+    CLOUDFLARE_TEMP_EMAIL_PROVIDER: 'cloudflare-temp-email',
+    completeStepFromBackground: async (step, payload) => {
+      completed.push({ step, payload });
+    },
+    confirmCustomVerificationStepBypassRequest: async () => ({ confirmed: true }),
+    getHotmailVerificationPollConfig: () => ({}),
+    getHotmailVerificationRequestTimestamp: () => 0,
+    getState: async () => ({}),
+    getTabId: async () => 1,
+    HOTMAIL_PROVIDER: 'hotmail-api',
+    isStopError: () => false,
+    LUCKMAIL_PROVIDER: 'luckmail-api',
+    MAIL_2925_VERIFICATION_INTERVAL_MS: 15000,
+    MAIL_2925_VERIFICATION_MAX_ATTEMPTS: 15,
+    pollCloudflareTempEmailVerificationCode: async () => ({}),
+    pollHotmailVerificationCode: async () => ({}),
+    pollLuckmailVerificationCode: async () => ({}),
+    sendToContentScript: async () => {
+      throw new Error('should not use non-resilient channel');
+    },
+    sendToContentScriptResilient: async (_source, message) => {
+      resilientCalls.push(message);
+      return {
+        success: true,
+        skipProfileStep: true,
+        skipProfileStepReason: 'combined_verification_profile',
+      };
+    },
+    sendToMailContentScriptResilient: async () => ({
+      code: '654321',
+      emailTimestamp: 123,
+    }),
+    setState: async () => {},
+    setStepStatus: async () => {},
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+    VERIFICATION_POLL_MAX_ROUNDS: 5,
+  });
+
+  await helpers.resolveVerificationStep(
+    4,
+    { email: 'user@example.com', lastSignupCode: null },
+    { provider: 'qq', label: 'QQ 邮箱' },
+    {
+      signupProfile: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        year: 2003,
+        month: 6,
+        day: 19,
+      },
+    }
+  );
+
+  assert.equal(resilientCalls[0].payload.signupProfile.firstName, 'Ada');
+  assert.deepStrictEqual(completed, [
+    {
+      step: 4,
+      payload: {
+        emailTimestamp: 123,
+        code: '654321',
+        phoneVerificationRequired: false,
+        skipProfileStep: true,
+        skipProfileStepReason: 'combined_verification_profile',
+      },
+    },
+  ]);
+});
+
 test('verification flow treats retryable submit transport failure as success when step 4 already redirected to logged-in home', async () => {
   const logs = [];
 

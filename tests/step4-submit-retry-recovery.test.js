@@ -198,3 +198,44 @@ return {
     url: 'https://chatgpt.com/',
   });
 });
+
+test('waitForVerificationSubmitOutcome treats step 5 as success after submit even when verification ui residue remains', async () => {
+  const api = new Function(`
+const location = { href: 'https://auth.openai.com/email-verification/register' };
+
+function throwIfStopped() {}
+function log() {}
+function getVerificationErrorText() { return ''; }
+function isStep5Ready() { return true; }
+function isStep8Ready() { return false; }
+function isAddPhonePageReady() { return false; }
+function isVerificationPageStillVisible() { return true; }
+function createSignupUserAlreadyExistsError() {
+  return new Error('SIGNUP_USER_ALREADY_EXISTS::步骤 4：检测到 user_already_exists，说明当前用户已存在，当前轮将直接停止。');
+}
+function getCurrentAuthRetryPageState() {
+  return null;
+}
+async function recoverCurrentAuthRetryPage() {
+  throw new Error('should not recover retry page');
+}
+async function sleep() {}
+
+${extractFunction('isSignupProfilePageUrl')}
+${extractFunction('isLikelyLoggedInChatgptHomeUrl')}
+${extractFunction('getStep4PostVerificationState')}
+${extractFunction('waitForVerificationSubmitOutcome')}
+
+return {
+  run() {
+    return waitForVerificationSubmitOutcome(4, 1000);
+  },
+};
+`)();
+
+  const result = await api.run();
+
+  assert.deepStrictEqual(result, {
+    success: true,
+  });
+});
