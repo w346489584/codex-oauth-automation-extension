@@ -799,7 +799,7 @@
             ).trim().toLowerCase() === 'gopay'
               ? 'GoPay'
               : 'PayPal';
-            await addLog(`Plus 鏀粯鏂瑰紡宸插垏鎹负 ${selectedPlusPaymentMethod}锛屽凡鏇存柊瀵瑰簲鐨?Plus 姝ラ銆?`, 'info');
+            await addLog(`Plus 支付方式已切换为 ${selectedPlusPaymentMethod}，已更新对应的 Plus 步骤。`, 'info');
           }
           return { ok: true, state: await getState(), proxyRouting };
         }
