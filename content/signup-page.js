@@ -1145,6 +1145,12 @@ function isLikelyLoggedInChatgptHomeUrl(rawUrl = location.href) {
 }
 
 function getStep4PostVerificationState() {
+  // Newer auth flows can briefly render profile fields before the email-verification
+  // form fully exits. Do not advance to Step 5 while verification UI is still present.
+  if (isVerificationPageStillVisible()) {
+    return null;
+  }
+
   if (isStep5Ready() || isSignupProfilePageUrl()) {
     return {
       state: 'step5',
@@ -2531,12 +2537,25 @@ async function waitForSplitVerificationInputsFilled(inputs, code, timeout = 2500
 }
 
 async function fillVerificationCode(step, payload) {
-  const { code } = payload;
+  const { code, signupProfile } = payload;
   if (!code) throw new Error('未提供验证码。');
 
-  if (step === 4 && isStep5Ready()) {
-    log(`步骤 ${step}：检测到页面已进入下一阶段，本次验证码提交按成功处理。`, 'ok');
-    return { success: true, assumed: true, alreadyAdvanced: true };
+  if (step === 4) {
+    const postVerificationState = getStep4PostVerificationState();
+    if (postVerificationState?.state === 'logged_in_home') {
+      log(`步骤 ${step}：检测到页面已进入 ChatGPT 已登录态，本次验证码提交按成功处理。`, 'ok');
+      return {
+        success: true,
+        assumed: true,
+        alreadyAdvanced: true,
+        skipProfileStep: true,
+        url: postVerificationState.url || location.href,
+      };
+    }
+    if (postVerificationState?.state === 'step5') {
+      log(`步骤 ${step}：检测到页面已进入下一阶段，本次验证码提交按成功处理。`, 'ok');
+      return { success: true, assumed: true, alreadyAdvanced: true };
+    }
   }
   if (step === 8) {
     if (isStep8Ready()) {
@@ -2552,6 +2571,17 @@ async function fillVerificationCode(step, payload) {
 
   if (step === 8) {
     await waitForLoginVerificationPageReady();
+  }
+
+  const combinedSignupProfilePage = step === 4 && isCombinedSignupVerificationProfilePage();
+  if (combinedSignupProfilePage) {
+    if (!signupProfile || !signupProfile.firstName || !signupProfile.lastName) {
+      throw new Error('当前注册验证码页面要求同时填写资料，但未提供姓名或生日数据。');
+    }
+    await step5_fillNameBirthday({
+      ...signupProfile,
+      prefillOnly: true,
+    });
   }
 
   // Find code input — could be a single input or multiple separate inputs
@@ -2632,6 +2662,10 @@ async function fillVerificationCode(step, payload) {
     } else {
       log(`步骤 ${step}：验证码已通过${outcome.assumed ? '（按成功推定）' : ''}。`, 'ok');
     }
+    if (combinedSignupProfilePage && !outcome.invalidCode) {
+      outcome.skipProfileStep = true;
+      outcome.skipProfileStepReason = 'combined_verification_profile';
+    }
     return outcome;
   }
 
@@ -2661,6 +2695,11 @@ async function fillVerificationCode(step, payload) {
     log(`步骤 ${step}：验证码提交后页面进入手机号页面，当前流程将停止自动授权。`, 'warn');
   } else {
     log(`步骤 ${step}：验证码已通过${outcome.assumed ? '（按成功推定）' : ''}。`, 'ok');
+  }
+
+  if (combinedSignupProfilePage && !outcome.invalidCode) {
+    outcome.skipProfileStep = true;
+    outcome.skipProfileStepReason = 'combined_verification_profile';
   }
 
   return outcome;
@@ -3333,8 +3372,40 @@ function getStep5DirectCompletionPayload({ isAgeMode = false } = {}) {
   return payload;
 }
 
+function isCombinedSignupVerificationProfilePage() {
+  if (!isEmailVerificationPage() || !isVerificationPageStillVisible()) {
+    return false;
+  }
+
+  if (!document.querySelector('form[action*="email-verification/register" i]')) {
+    return false;
+  }
+
+  const nameInput = document.querySelector('input[name="name"], input[autocomplete="name"]');
+  if (!nameInput || !isVisibleElement(nameInput)) {
+    return false;
+  }
+
+  const ageInput = document.querySelector('input[name="age"]');
+  if (ageInput && isVisibleElement(ageInput)) {
+    return true;
+  }
+
+  const yearSpinner = document.querySelector('[role="spinbutton"][data-type="year"]');
+  const monthSpinner = document.querySelector('[role="spinbutton"][data-type="month"]');
+  const daySpinner = document.querySelector('[role="spinbutton"][data-type="day"]');
+  return Boolean(
+    yearSpinner
+    && monthSpinner
+    && daySpinner
+    && isVisibleElement(yearSpinner)
+    && isVisibleElement(monthSpinner)
+    && isVisibleElement(daySpinner)
+  );
+}
+
 async function step5_fillNameBirthday(payload) {
-  const { firstName, lastName, age, year, month, day } = payload;
+  const { firstName, lastName, age, year, month, day, prefillOnly = false } = payload;
   if (!firstName || !lastName) throw new Error('未提供姓名数据。');
 
   const resolvedAge = age ?? (year ? new Date().getFullYear() - Number(year) : null);
@@ -3532,6 +3603,11 @@ async function step5_fillNameBirthday(payload) {
     }
   }
 
+
+  if (prefillOnly) {
+    log('步骤 4：混合注册页资料已预填，继续填写验证码。', 'info');
+    return { prefilled: true };
+  }
 
   // Click "完成帐户创建" button
   await sleep(500);

@@ -9,6 +9,8 @@
       chrome,
       completeStepFromBackground,
       confirmCustomVerificationStepBypass,
+      generateRandomBirthday,
+      generateRandomName,
       ensureMail2925MailboxSession,
       ensureIcloudMailSession,
       getMailConfig,
@@ -24,6 +26,21 @@
       STANDARD_MAIL_VERIFICATION_RESEND_INTERVAL_MS,
       throwIfStopped,
     } = deps;
+
+    function buildSignupProfileForVerificationStep() {
+      const name = typeof generateRandomName === 'function' ? generateRandomName() : null;
+      const birthday = typeof generateRandomBirthday === 'function' ? generateRandomBirthday() : null;
+      if (!name?.firstName || !name?.lastName || !birthday) {
+        return null;
+      }
+      return {
+        firstName: name.firstName,
+        lastName: name.lastName,
+        year: birthday.year,
+        month: birthday.month,
+        day: birthday.day,
+      };
+    }
 
     function getExpectedMail2925MailboxEmail(state = {}) {
       if (Boolean(state?.mail2925UseAccountPool)) {
@@ -152,12 +169,14 @@
         LUCKMAIL_PROVIDER,
         CLOUDFLARE_TEMP_EMAIL_PROVIDER,
       ].includes(mail.provider);
+      const signupProfile = buildSignupProfileForVerificationStep();
 
       await resolveVerificationStep(4, state, mail, {
         filterAfterTimestamp: verificationFilterAfterTimestamp,
         sessionKey: verificationSessionKey,
         disableTimeBudgetCap: mail.provider === '2925',
         requestFreshCodeFirst: shouldRequestFreshCodeFirst,
+        signupProfile,
         resendIntervalMs: mail.provider === LUCKMAIL_PROVIDER
           ? 15000
           : ((mail.provider === HOTMAIL_PROVIDER || mail.provider === '2925')

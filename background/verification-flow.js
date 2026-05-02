@@ -909,7 +909,10 @@
         type: 'FILL_CODE',
         step,
         source: 'background',
-        payload: { code },
+        payload: {
+          code,
+          ...(step === 4 && options.signupProfile ? { signupProfile: options.signupProfile } : {}),
+        },
       };
       let result;
       if (typeof sendToContentScriptResilient === 'function') {
