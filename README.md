@@ -835,3 +835,11 @@ sidepanel/                 侧边栏 UI
 - 没有硬编码你的 CPA 地址、密码或账户
 - 自定义密码只存在当前会话存储中
 - 邮箱和密码会被记录到本轮 `accounts` 中，便于追踪本次运行结果
+
+## 来源与致谢
+
+本项目早期代码与 [whwh1233/StepFlow-Duck](https://github.com/whwh1233/StepFlow-Duck) 同源，共同历史截至 `387e177e005e9863f3de193ad8b954e9efb5fd1d`。当前维护者最初接触到的是社群内分享的 zip 软件包，当时压缩包内没有 `LICENSE` 文件，也没有任何 GitHub 远程仓库地址或开源协议声明。
+
+后续核对发现，原作者也将同源早期代码发布到了 GitHub，并在 `72218aab151a2ff74bf1763684a6370657c7bc57` 提交补充 MIT License。当前仓库已改为 MIT License，并补充原作者署名与来源说明。完整时间线见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+感谢原作者 whwh1233、Jimmy 以及后续所有贡献者的早期工作和持续改进。当前仓库中的相关服务入口、贡献入口、交流群入口和其他维护者整理的入口，不代表原项目作者背书。
